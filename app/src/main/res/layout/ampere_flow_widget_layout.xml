@@ -40,7 +40,7 @@
     </LinearLayout>
 
     <!-- Vertical Divider -->
-    <View
+    <FrameLayout
         android:layout_width="1dp"
         android:layout_height="match_parent"
         android:background="#22FFFFFF"
@@ -82,5 +82,15 @@
             android:text="🌡️ Temp: --°C"
             android:textColor="#E0E0E0"
             android:textSize="12sp" />
+
+        <!-- Magnetic Safety Status -->
+        <TextView
+            android:id="@+id/widget_magnetic"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🧲 Mag Zone: Safe"
+            android:textColor="#E0E0E0"
+            android:textSize="12sp"
+            android:layout_marginTop="4dp" />
     </LinearLayout>
 </LinearLayout>

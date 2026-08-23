@@ -2,12 +2,42 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+
+
+
+
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+
+    <attribution android:tag="app_default" android:label="@string/app_name" />
+    <attribution android:tag="@string/empty" android:label="@string/app_name" />
+    
+    <attribution android:tag="battery_voice_tag" android:label="@string/app_name" />
+    <attribution android:tag="battery_sensor" android:label="@string/app_name" />
+    <attribution android:tag="battery_monitoring_tag" android:label="@string/app_name" />
+    <attribution android:tag="default" android:label="@string/app_name" />
+    <attribution android:tag="audio" android:label="@string/app_name" />
+    <attribution android:tag="location" android:label="@string/app_name" />
+    <attribution android:tag="sensor" android:label="@string/app_name" />
+    <attribution android:tag="sensor_intelligence" android:label="@string/app_name" />
+    <attribution android:tag="bluetooth" android:label="@string/app_name" />
+    <attribution android:tag="weather" android:label="@string/app_name" />
+    <attribution android:tag="system" android:label="@string/app_name" />
+    <attribution android:tag="audit" android:label="@string/app_name" />
+    <attribution android:tag="ai" android:label="@string/app_name" />
 
     <application
         android:name=".BatteryApplication"
@@ -20,6 +50,31 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
 
+
+
+
+
+
+        <receiver
+            android:name=".receiver.ChargingContextReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BATTERY_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".service.BatteryEventService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ACTION_POWER_CONNECTED" />
+                <action android:name="android.intent.action.ACTION_POWER_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+
         <service
             android:name=".service.BatteryService"
             android:enabled="true"
@@ -29,6 +84,7 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Continuously monitors battery status and provides real-time offline TTS voice announcements on charging speed, temperature, and predictions." />
         </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -42,11 +98,12 @@
         </activity>
 
         <receiver
-            android:name=".widget.AmpereFlowWidget"
+            android:name=".widget.NetraSmartWidget"
             android:exported="true"
-            android:label="Netra Sentinel - Medium Widget (4x2)">
+            android:label="Netra Sentinel - Smart Widget (4x2)">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.widget.ACTION_UPDATE_WIDGETS" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
@@ -54,9 +111,9 @@
         </receiver>
 
         <receiver
-            android:name=".widget.SmallWidget"
+            android:name=".widget.NetraCompactWidget"
             android:exported="true"
-            android:label="Netra Sentinel - Small Widget (2x2)">
+            android:label="Netra Sentinel - Compact Widget (2x2)">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -66,9 +123,9 @@
         </receiver>
 
         <receiver
-            android:name=".widget.LargeWidget"
+            android:name=".widget.NetraBatteryWidget"
             android:exported="true"
-            android:label="Netra Sentinel - Large Widget (4x4)">
+            android:label="Netra Sentinel - Battery Widget (4x4)">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -88,6 +145,60 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/smart_safety_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".widget.BatteryGlanceWidgetReceiver"
+            android:exported="true"
+            android:label="Netra Glance - Live Battery Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".receiver.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.NetraDeviceAdminReceiver"
+            android:label="@string/device_admin_label"
+            android:description="@string/device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <service
+            android:name=".service.NetraLiveMonitorTileService"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Netra Monitor"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+
+
     </application>
 
 </manifest>

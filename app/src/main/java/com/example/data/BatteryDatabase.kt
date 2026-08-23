@@ -5,9 +5,33 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [SettingsEntity::class, ChargingSession::class], version = 3, exportSchema = false)
+@Database(
+    entities = [
+        SettingsEntity::class,
+        ChargingSession::class,
+        DischargingSession::class,
+        AppConsumptionEntity::class,
+        BatteryTrendLog::class,
+        BatteryEvent::class,
+        AppActivity::class,
+        com.example.devices.Device::class,
+        MagneticEvent::class,
+        SystemAuditRecord::class,
+        BatteryAlert::class,
+        HealthStatusEntity::class,
+        DiagnosticLogEntity::class,
+        RootCauseEntity::class,
+        ResourceOptimizerEntity::class,
+        BatteryHistoryEntity::class,
+        AppVersionEntity::class
+    ],
+    version = 37,
+    exportSchema = false
+)
 abstract class BatteryDatabase : RoomDatabase() {
     abstract fun batteryDao(): BatteryDao
+    abstract fun deviceDao(): com.example.devices.DeviceDao
+    abstract fun batteryHistoryDao(): BatteryHistoryDao
 
     companion object {
         @Volatile
@@ -20,7 +44,15 @@ abstract class BatteryDatabase : RoomDatabase() {
                     BatteryDatabase::class.java,
                     "battery_voice_assistant_db"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(
+                    BatteryDatabaseMigrations.MIGRATION_1_37,
+                    BatteryDatabaseMigrations.MIGRATION_17_37,
+                    BatteryDatabaseMigrations.MIGRATION_18_37,
+                    BatteryDatabaseMigrations.MIGRATION_28_37,
+                    BatteryDatabaseMigrations.MIGRATION_29_37,
+                    BatteryDatabaseMigrations.MIGRATION_35_37,
+                    BatteryDatabaseMigrations.MIGRATION_36_37
+                )
                 .build()
                 INSTANCE = instance
                 instance

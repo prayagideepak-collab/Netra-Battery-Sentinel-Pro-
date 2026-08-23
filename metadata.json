@@ -1,5 +1,5 @@
 {
-  "name": "Netra Battery Sentinel Pro",
+  "name": "Netra Battery Sentinel Pro 2.0",
   "description": "A privacy-focused offline battery intelligence monitor and voice assistant with charging predictions, analytics, and health tracking",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

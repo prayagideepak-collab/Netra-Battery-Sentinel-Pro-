@@ -108,57 +108,36 @@ object BatteryIntelligence {
     }
 
     /**
-     * Predicts expected lifespan remaining based on current battery health wear
+     * Predicts expected hardware health lifespan remaining based on current battery health retention
+     * relative to the standard 80% capacity replacement threshold.
      */
     fun predictLifespan(healthPct: Int): LifespanInfo {
-        val remainingYears: Int
-        val remainingMonths: Int
-
-        // Base lifespan calculations assuming 100% is approx 4 years remaining under proper care
-        // and standard battery replacement is recommended at 80% (approx 20% wear)
-        when {
-            healthPct >= 98 -> {
-                remainingYears = 3
-                remainingMonths = 10
-            }
-            healthPct >= 95 -> {
-                remainingYears = 2
-                remainingMonths = 11
-            }
-            healthPct >= 90 -> {
-                remainingYears = 1
-                remainingMonths = 9
-            }
-            healthPct >= 85 -> {
-                remainingYears = 0
-                remainingMonths = 10
-            }
-            healthPct >= 81 -> {
-                remainingYears = 0
-                remainingMonths = 4
-            }
-            else -> {
-                remainingYears = 0
-                remainingMonths = 0
-            }
+        val usableCapacityPct = (healthPct - 80).coerceAtLeast(0)
+        
+        if (usableCapacityPct <= 0) {
+            return LifespanInfo(
+                expectedRemaining = "Cell Replacement Recommended",
+                predictionText = "Battery capacity has dropped to or below 80%. Chemical degradation requires hardware replacement."
+            )
         }
 
-        val expectedRemaining = if (remainingYears == 0 && remainingMonths == 0) {
-            "Replacement recommended"
-        } else if (remainingYears == 0) {
-            "$remainingMonths months"
-        } else if (remainingMonths == 0) {
-            "$remainingYears years"
-        } else {
-            "$remainingYears years $remainingMonths months"
+        // Standard lithium degradation curve: approx 0.8% - 1.0% capacity loss per month under typical daily usage
+        val totalMonthsRemaining = (usableCapacityPct * 1.25f).toInt().coerceAtLeast(1)
+        val remainingYears = totalMonthsRemaining / 12
+        val remainingMonths = totalMonthsRemaining % 12
+
+        val expectedRemaining = when {
+            remainingYears > 0 && remainingMonths > 0 -> "$remainingYears ${if (remainingYears == 1) "year" else "years"} $remainingMonths ${if (remainingMonths == 1) "month" else "months"}"
+            remainingYears > 0 -> "$remainingYears ${if (remainingYears == 1) "year" else "years"}"
+            else -> "$remainingMonths ${if (remainingMonths == 1) "month" else "months"}"
         }
 
-        val predictionText = if (healthPct >= 90) {
-            "Estimated battery lifespan remaining under current usage habits. Outstanding care!"
-        } else if (healthPct >= 80) {
-            "Slight capacity degradation detected. Lifespan is stable but starting to contract."
+        val predictionText = if (healthPct >= 92) {
+            "Verified chemical health is $healthPct%. Hardware cell is in excellent operational condition."
+        } else if (healthPct >= 85) {
+            "Verified chemical health is $healthPct%. Moderate capacity degradation; hardware cell function is stable."
         } else {
-            "Battery has reached end-of-life status. A replacement is recommended to restore factory screen-on time."
+            "Verified chemical health is $healthPct%. Nearing 80% replacement threshold. Monitor thermal stability."
         }
 
         return LifespanInfo(expectedRemaining, predictionText)

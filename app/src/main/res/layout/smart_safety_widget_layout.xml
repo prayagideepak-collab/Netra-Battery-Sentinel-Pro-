@@ -38,7 +38,7 @@
     </LinearLayout>
 
     <!-- Vertical Divider -->
-    <View
+    <FrameLayout
         android:layout_width="1dp"
         android:layout_height="match_parent"
         android:background="#22FFFFFF"
@@ -80,5 +80,15 @@
             android:text="❤️ Health: Good"
             android:textColor="#FFFFFF"
             android:textSize="11sp" />
+
+        <!-- Magnetic Safety Status -->
+        <TextView
+            android:id="@+id/widget_magnetic_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🧲 Mag: Safe"
+            android:textColor="#B0BEC5"
+            android:textSize="11sp"
+            android:layout_marginTop="2dp" />
     </LinearLayout>
 </LinearLayout>

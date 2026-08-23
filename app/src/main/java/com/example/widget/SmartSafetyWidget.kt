@@ -44,6 +44,15 @@ class SmartSafetyWidget : AppWidgetProvider() {
             // Health
             views.setTextViewText(R.id.widget_health, "❤️ Health: ${state.health} (${state.healthPercentage}%)")
 
+            // Magnetic Status
+            val magText = String.format(
+                Locale.US,
+                "🧲 Mag: %s (%.1f uT)",
+                state.magneticSafetyZone,
+                state.magneticFieldMagnitude
+            )
+            views.setTextViewText(R.id.widget_magnetic_status, magText)
+
             // Setup click to open app
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

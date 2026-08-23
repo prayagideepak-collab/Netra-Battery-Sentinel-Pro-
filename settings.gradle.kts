@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Netra Battery Sentinel Pro"
+rootProject.name = "Netra Battery Sentinel Pro 2.0"
 
 include(":app")

@@ -9,14 +9,18 @@ val SlateLightTertiary = Color(0xFF3B6470)
 val SlateLightBackground = Color(0xFFFBFDF8)
 val SlateLightSurface = Color(0xFFF3F7F2)
 
-// Dark/AMOLED Theme Palette (Cosmic Slate / Cyber Green)
-val CosmicPrimary = Color(0xFF00FF87) // Cyber Neon Green Accent
-val CosmicSecondary = Color(0xFF22C55E) // Bright Emerald
-val CosmicTertiary = Color(0xFF38BDF8) // Cosmic Blue
-val CosmicDarkBackground = Color(0xFF090F0C) // Deep space slate green
-val CosmicDarkSurface = Color(0xFF111E18) // Space slate surface
+// Netra Battery Sentinel Pro Palette
+val NetraBlack = Color(0xFF000000)
+val NetraNeonGreen = Color(0xFF00FF41)
+val NetraSurface = Color(0xFF121212) // Slightly elevated black for cards/surfaces
+val NetraText = Color(0xFFE0E0E0)
 
-val AmoledBackground = Color(0xFF000000)
-val AmoledSurface = Color(0xFF0D0D0D)
-val AmoledCard = Color(0xFF151515)
+// Low Battery Red Theme Palette (< 20%)
+val LowBatteryRedPrimary = Color(0xFFFF3B30) // Vivid Danger Red
+val LowBatteryRedSecondary = Color(0xFFFF6B6B) // Light Red / Coral
+val LowBatteryRedTertiary = Color(0xFFFF8E8E) // Soft Red
+val LowBatteryRedDarkBackground = Color(0xFF1B0505) // Deep Crimson Dark Background
+val LowBatteryRedDarkSurface = Color(0xFF2C0A0A) // Crimson Surface
+val LowBatteryRedLightBackground = Color(0xFFFFF0F0) // Soft Red Light Background
+val LowBatteryRedLightSurface = Color(0xFFFFE5E5) // Soft Red Surface
 
