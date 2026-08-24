@@ -88,10 +88,25 @@ class DatabaseArchitectureTest {
         assertEquals(303, retrieved303?.versionCode)
         assertEquals("3.1.0-sql-build-303", retrieved303?.versionName)
 
+        // Step 5: Increment version from 303 to 304 for Task 02 Charging Classification
+        val version304 = AppVersionEntity(
+            id = 1,
+            versionCode = (retrieved303?.versionCode ?: 303) + 1,
+            versionName = "3.1.0-sql-build-304",
+            lastUpdatedTimestamp = System.currentTimeMillis(),
+            changeDescription = "Auto-updated SQL Database version for Task 02 Charging-Type Classification (v304)"
+        )
+        batteryDao.insertAppVersion(version304)
+
+        val retrieved304 = batteryDao.getAppVersionDirect()
+        assertNotNull(retrieved304)
+        assertEquals(304, retrieved304?.versionCode)
+        assertEquals("3.1.0-sql-build-304", retrieved304?.versionName)
+
         // Flow verification
         val flowVersion = batteryDao.getAppVersion().first()
-        assertEquals(303, flowVersion?.versionCode)
-        assertEquals("3.1.0-sql-build-303", flowVersion?.versionName)
+        assertEquals(304, flowVersion?.versionCode)
+        assertEquals("3.1.0-sql-build-304", flowVersion?.versionName)
     }
 
     @Test

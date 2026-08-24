@@ -81,8 +81,8 @@ object ChargingEngine {
      * Classifies Charging Type strictly based on deterministic, evidence-based telemetry.
      * Evaluates physical inputs (V, I, P) against device learned baseline, sustained battery slope,
      * and thermal limitations. Never equates 'AC' with 'Fast'.
-     * Returns: 'Charging — Calculating rate...', 'Slow Charging', 'Normal Charging',
-     * 'Fast Charging', 'Maintenance / Net-Zero', 'Charging — Insufficient telemetry', or 'None'.
+     * Returns: 'Charging — Calculating...', 'Slow Charging', 'Normal Charging',
+     * 'Fast Charging', 'Maintenance / Near-Full', 'Charging — Insufficient Data', or 'None'.
      */
     fun classifyChargingType(
         isCharging: Boolean,
@@ -94,22 +94,27 @@ object ChargingEngine {
         temperatureCelsius: Float = 30f,
         temperatureTrend: String = "STABLE",
         isScreenOn: Boolean = false,
-        powerSource: String = "AC"
+        powerSource: String = "AC",
+        batteryPercentage: Int? = null
     ): String {
         if (!isCharging) return "None"
-        val assessment = com.example.engines.charging.DeterministicChargingEngine.evaluate(
-            isCharging = true,
-            sessionDurationSeconds = sessionDurationSeconds,
-            measuredRatePctPerHr = measuredRatePctPerHr,
-            powerWatt = powerWatt,
-            currentMa = currentNowMa,
-            voltageMv = voltageMv,
-            temperatureCelsius = temperatureCelsius,
-            temperatureTrend = temperatureTrend,
-            isScreenOn = isScreenOn,
-            powerSource = powerSource
+        val result = com.example.battery.engine.ChargingClassificationEngine.classify(
+            com.example.battery.model.ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = powerSource,
+                currentNowMa = currentNowMa,
+                voltageMv = voltageMv,
+                powerWatt = powerWatt,
+                batteryPercentage = batteryPercentage,
+                measuredVelocityPctPerHr = measuredRatePctPerHr,
+                sessionDurationSeconds = sessionDurationSeconds,
+                temperatureCelsius = temperatureCelsius,
+                temperatureTrend = temperatureTrend,
+                isScreenOn = isScreenOn,
+                timestampMs = System.currentTimeMillis()
+            )
         )
-        return assessment.state.displayName
+        return result.state.displayName
     }
 
     fun getChargingQuality(state: BatteryState): String {

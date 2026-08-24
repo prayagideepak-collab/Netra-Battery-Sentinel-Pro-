@@ -2109,6 +2109,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             if (!lastPluggedState) {
                 // Charger connected -> immediately invalidate old discharge prediction
                 com.example.engines.BatteryPredictionEngine.invalidateStateTransition(isCharging = true)
+                com.example.battery.engine.ChargingClassificationEngine.onChargingStateChanged(true, chargingType)
                 sessionStartTime = now
                 sessionStartPercentage = percentage
                 peakCurrent = 0
@@ -2172,13 +2173,14 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             if (lastPluggedState) {
                 // Charger disconnected -> immediately invalidate old charging prediction
                 com.example.engines.BatteryPredictionEngine.invalidateStateTransition(isCharging = false)
+                com.example.battery.engine.ChargingClassificationEngine.onChargingStateChanged(false)
                 val sessionEndTime = now
                 val avgPowerVal = if (readingsCount > 0) sumWatt / readingsCount else 0f
                 val sessionDurationHr = if (sessionStartTime > 0L) (sessionEndTime - sessionStartTime) / 3600000f else 0f
                 val sessionGainedPct = (percentage - sessionStartPercentage).coerceAtLeast(0)
                 if (sessionDurationHr >= 0.05f && sessionGainedPct > 0) {
                     val finalAvgRatePctHr = sessionGainedPct / sessionDurationHr
-                    com.example.engines.charging.DeterministicChargingEngine.recordSessionCompletion(applicationContext, finalAvgRatePctHr)
+                    com.example.engines.charging.DeterministicChargingEngine.recordSessionCompletion(applicationContext, finalAvgRatePctHr, lastChargingType)
                 }
                 serviceScope.launch {
                     repository?.endActiveSession(sessionEndTime, percentage, avgPower = avgPowerVal)
@@ -2391,7 +2393,8 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                 temperatureCelsius = effectiveTemp,
                 temperatureTrend = if (currentTempDelta > 0.05f) "RISING" else if (currentTempDelta < -0.05f) "FALLING" else "STABLE",
                 isScreenOn = isScreenOn,
-                powerSource = chargingType
+                powerSource = chargingType,
+                batteryPercentage = percentage
             ),
             isDataTransferActive = isDataTransferActive,
             usbDataMode = usbDataMode,
@@ -2715,38 +2718,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private suspend fun getHistoricalAverageSpeed(type: String): Float {
-        val repo = repository ?: return getDefaultChargingSpeed(type)
-        val sessions = try {
-            repo.allSessions.firstOrNull() ?: emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
-        val filtered = sessions.filter { it.chargingType == type && it.endTime != null && it.endPercentage != null }
-        if (filtered.isEmpty()) {
-            return getDefaultChargingSpeed(type)
-        }
-        var totalSpeed = 0f
-        var count = 0
-        for (s in filtered) {
-            val endTime = s.endTime ?: continue
-            val endPercentage = s.endPercentage ?: continue
-            val durationHr = (endTime - s.startTime) / 3600000f
-            val gainedPct = endPercentage - s.startPercentage
-            if (durationHr > 0.05f && gainedPct > 0) {
-                totalSpeed += gainedPct / durationHr
-                count++
-            }
-        }
-        return if (count > 0) totalSpeed / count else getDefaultChargingSpeed(type)
-    }
-
-    private fun getDefaultChargingSpeed(type: String): Float {
-        return when (type) {
-            "AC" -> 35f
-            "USB" -> 12f
-            "Wireless" -> 18f
-            else -> 20f
-        }
+        return com.example.battery.engine.ChargingClassificationEngine.getLearnedBaseline(type) ?: 0f
     }
 
     private fun formatDurationToSpeak(durationMs: Long): String {
