@@ -3661,12 +3661,13 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                               announcement.text.contains("overheat", ignoreCase = true) ||
                               announcement.text.contains("heat", ignoreCase = true)
 
+        if (com.example.engines.deepsleep.DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety, settings)) {
+            Log.d(TAG, "Announcement suppressed by DeepSleepEngine policy: ${announcement.text}")
+            return
+        }
+
         if (!isThermalSafety) {
             if (!settings.voiceAssistantEnabled) return
-            if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
-                Log.d(TAG, "Announcement suppressed during Deep Sleep: ${announcement.text}")
-                return
-            }
             if (!shouldAnnounce()) return
         }
 
