@@ -587,4 +587,428 @@ class ChargingClassificationEngineTest {
         val baseline = ChargingClassificationEngine.getLearnedBaseline("AC")
         assertNull(baseline)
     }
+
+    // AA. Charging -> Discharging transition
+    @Test
+    fun testAA_ChargingToDischargingTransition() {
+        // Establish Fast charging
+        ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 3000,
+                voltageMv = 5000,
+                powerWatt = 15.0f,
+                sessionDurationSeconds = 60L,
+                timestampMs = 1000L
+            )
+        )
+        // Transition to discharging
+        val result = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = false,
+                powerSource = "None",
+                timestampMs = 2000L
+            )
+        )
+        assertEquals(ChargingState.NOT_CHARGING, result.state)
+        assertEquals("Discharging", result.displayName)
+        assertNull(result.inputPowerW)
+    }
+
+    // AB. Discharging -> Charging transition
+    @Test
+    fun testAB_DischargingToChargingTransition() {
+        // Start in discharging
+        ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = false,
+                powerSource = "None",
+                timestampMs = 1000L
+            )
+        )
+        // Charger plugged in with 0 duration and no velocity
+        val result = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                sessionDurationSeconds = 0L,
+                timestampMs = 2000L
+            )
+        )
+        assertEquals(ChargingState.INITIALIZING, result.state)
+        assertEquals(ChargingConfidence.INITIALIZING, result.confidence)
+    }
+
+    // AC. Wireless -> Wired transition
+    @Test
+    fun testAC_WirelessToWiredTransition() {
+        // Record separate baselines
+        ChargingClassificationEngine.recordSessionCompletion(context, "Wireless", 15.0f)
+        ChargingClassificationEngine.recordSessionCompletion(context, "AC", 45.0f)
+
+        // Charging on wireless
+        val rWireless = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "Wireless",
+                currentNowMa = 1000,
+                voltageMv = 5000,
+                powerWatt = 5.0f,
+                measuredVelocityPctPerHr = 15.0f,
+                sessionDurationSeconds = 40L,
+                timestampMs = 1000L
+            )
+        )
+        assertEquals(ChargingState.NORMAL, rWireless.state)
+        assertEquals(15.0f, rWireless.deviceLearnedBaselinePctPerHr!!, 0.1f)
+
+        // Switch to AC wired
+        val rWired = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 3500,
+                voltageMv = 5000,
+                powerWatt = 17.5f,
+                measuredVelocityPctPerHr = 45.0f,
+                sessionDurationSeconds = 40L,
+                timestampMs = 2000L
+            )
+        )
+        assertEquals("AC", rWired.powerSource)
+        assertEquals(45.0f, rWired.deviceLearnedBaselinePctPerHr!!, 0.1f)
+    }
+
+    // AD. Wired -> Wireless transition
+    @Test
+    fun testAD_WiredToWirelessTransition() {
+        ChargingClassificationEngine.recordSessionCompletion(context, "Wireless", 14.0f)
+
+        val rWired = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "USB",
+                currentNowMa = 500,
+                voltageMv = 5000,
+                powerWatt = 2.5f,
+                sessionDurationSeconds = 30L,
+                timestampMs = 1000L
+            )
+        )
+        assertEquals("USB", rWired.powerSource)
+
+        val rWireless = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "Wireless",
+                sessionDurationSeconds = 2L,
+                timestampMs = 2000L
+            )
+        )
+        assertEquals("Wireless", rWireless.powerSource)
+        assertEquals(ChargingState.INITIALIZING, rWireless.state)
+    }
+
+    // AE. Application restart during charging
+    @Test
+    fun testAE_ApplicationRestartDuringCharging() {
+        // Record baseline before restart
+        ChargingClassificationEngine.recordSessionCompletion(context, "AC", 20.0f)
+
+        // Simulate app restart: clear in-memory state and reload from prefs
+        ChargingClassificationEngine.clearSession()
+        ChargingClassificationEngine.init(context)
+
+        assertEquals(20.0f, ChargingClassificationEngine.getLearnedBaseline("AC")!!, 0.1f)
+        val result = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 1500,
+                voltageMv = 5000,
+                powerWatt = 7.5f,
+                measuredVelocityPctPerHr = 20.0f,
+                sessionDurationSeconds = 40L,
+                timestampMs = 1000L
+            )
+        )
+        assertEquals(ChargingState.NORMAL, result.state)
+        assertEquals(20.0f, result.deviceLearnedBaselinePctPerHr!!, 0.1f)
+    }
+
+    // AF. Rapid source switching
+    @Test
+    fun testAF_RapidSourceSwitching() {
+        val sources = listOf("AC", "USB", "AC", "Wireless", "AC")
+        var time = 1000L
+        for (src in sources) {
+            val r = ChargingClassificationEngine.classify(
+                ChargingTelemetryInput(
+                    isCharging = true,
+                    powerSource = src,
+                    sessionDurationSeconds = 2L,
+                    timestampMs = time
+                )
+            )
+            assertEquals(src, r.powerSource)
+            assertEquals(ChargingState.INITIALIZING, r.state)
+            time += 500L
+        }
+    }
+
+    // AG. Thermal recovery
+    @Test
+    fun testAG_ThermalRecovery() {
+        // High temp throttling (43°C)
+        val rHot = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 600,
+                voltageMv = 4000,
+                powerWatt = 2.4f,
+                temperatureCelsius = 43.0f,
+                sessionDurationSeconds = 40L,
+                timestampMs = 1000L
+            )
+        )
+        assertTrue(rHot.isThermalLimited)
+        assertEquals(ChargingState.SLOW, rHot.state)
+
+        // Cools down to 32°C and ramps back up to 15W
+        ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 3000,
+                voltageMv = 5000,
+                powerWatt = 15.0f,
+                temperatureCelsius = 32.0f,
+                sessionDurationSeconds = 45L,
+                timestampMs = 2000L
+            )
+        )
+        val rCooled = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 3000,
+                voltageMv = 5000,
+                powerWatt = 15.0f,
+                temperatureCelsius = 32.0f,
+                sessionDurationSeconds = 50L,
+                timestampMs = 3000L
+            )
+        )
+        assertFalse(rCooled.isThermalLimited)
+        assertEquals(ChargingState.FAST, rCooled.state)
+    }
+
+    // AH. Near-full tapering recovery
+    @Test
+    fun testAH_NearFullTaperingRecovery() {
+        // At 95% -> Maintenance
+        val rNearFull = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 200,
+                voltageMv = 4350,
+                batteryPercentage = 95,
+                measuredVelocityPctPerHr = 0.5f,
+                sessionDurationSeconds = 60L,
+                timestampMs = 1000L
+            )
+        )
+        assertEquals(ChargingState.MAINTENANCE, rNearFull.state)
+        assertTrue(rNearFull.isNearFullTapering)
+
+        // New session at 30% battery -> Fast
+        ChargingClassificationEngine.onChargingStateChanged(false)
+        ChargingClassificationEngine.onChargingStateChanged(true, "AC")
+
+        ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 3500,
+                voltageMv = 5000,
+                powerWatt = 17.5f,
+                batteryPercentage = 30,
+                measuredVelocityPctPerHr = 30.0f,
+                sessionDurationSeconds = 30L,
+                timestampMs = 2000L
+            )
+        )
+        val rLowSoC = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 3500,
+                voltageMv = 5000,
+                powerWatt = 17.5f,
+                batteryPercentage = 30,
+                measuredVelocityPctPerHr = 30.0f,
+                sessionDurationSeconds = 35L,
+                timestampMs = 3000L
+            )
+        )
+        assertFalse(rLowSoC.isNearFullTapering)
+        assertEquals(ChargingState.FAST, rLowSoC.state)
+    }
+
+    // AI. Invalid timestamp sequence
+    @Test
+    fun testAI_InvalidTimestampSequence() {
+        val t0 = 10000L
+        ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 2000,
+                voltageMv = 5000,
+                powerWatt = 10.0f,
+                sessionDurationSeconds = 30L,
+                timestampMs = t0
+            )
+        )
+        // Send erratic timestamp sequence (t0 - 1000, t0, t0 + 500)
+        val rBackward = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                timestampMs = t0 - 1000L
+            )
+        )
+        assertTrue(rBackward.explanation.contains("backward timestamp"))
+
+        val rDuplicate = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                timestampMs = t0
+            )
+        )
+        assertTrue(rDuplicate.explanation.contains("Duplicate timestamp"))
+
+        val rValid = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 2000,
+                voltageMv = 5000,
+                powerWatt = 10.0f,
+                sessionDurationSeconds = 35L,
+                timestampMs = t0 + 500L
+            )
+        )
+        assertEquals(ChargingState.NORMAL, rValid.state)
+    }
+
+    // AJ. Baseline persistence / reload
+    @Test
+    fun testAJ_BaselinePersistenceAndReload() {
+        ChargingClassificationEngine.recordSessionCompletion(context, "AC", 25.0f)
+        ChargingClassificationEngine.recordSessionCompletion(context, "AC", 35.0f)
+
+        // Clear in-memory and reload
+        ChargingClassificationEngine.resetAllForTesting(null) // do not wipe context
+        assertNull(ChargingClassificationEngine.getLearnedBaseline("AC"))
+
+        ChargingClassificationEngine.init(context)
+        val loaded = ChargingClassificationEngine.getLearnedBaseline("AC")
+        assertNotNull(loaded)
+        assertEquals(30.0f, loaded!!, 0.1f)
+    }
+
+    // AK. Baseline corruption handling
+    @Test
+    fun testAK_BaselineCorruptionHandling() {
+        // Manually write corrupt data into shared prefs
+        val prefs = context.getSharedPreferences("netra_charging_learned_baselines", Context.MODE_PRIVATE)
+        prefs.edit().putString("baseline_AC", "corrupted,NaN,-50.0,999.0,30.0,40.0").commit()
+
+        ChargingClassificationEngine.resetAllForTesting(null)
+        ChargingClassificationEngine.init(context)
+
+        // Only valid rates (3.0% to 120.0%) should be parsed: 30.0 and 40.0 -> average = 35.0%
+        val baseline = ChargingClassificationEngine.getLearnedBaseline("AC")
+        assertNotNull(baseline)
+        assertEquals(35.0f, baseline!!, 0.1f)
+    }
+
+    // AL. Extreme but valid telemetry
+    @Test
+    fun testAL_ExtremeButValidTelemetry() {
+        // Extreme fast charger (65W, 6500mA at 10V equivalent, 80%/h)
+        val rUltraFast = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "AC",
+                currentNowMa = 6500,
+                voltageMv = 5000,
+                powerWatt = 65.0f,
+                measuredVelocityPctPerHr = 80.0f,
+                sessionDurationSeconds = 40L,
+                timestampMs = 1000L
+            )
+        )
+        assertEquals(ChargingState.FAST, rUltraFast.state)
+        assertEquals(65.0f, rUltraFast.inputPowerW!!, 0.1f)
+
+        // Extreme slow trickle (0.5W, 100mA at 5V, 0.8%/h)
+        val rTrickle = ChargingClassificationEngine.classify(
+            ChargingTelemetryInput(
+                isCharging = true,
+                powerSource = "USB",
+                currentNowMa = 100,
+                voltageMv = 5000,
+                powerWatt = 0.5f,
+                measuredVelocityPctPerHr = 0.8f,
+                sessionDurationSeconds = 40L,
+                timestampMs = 2000L
+            )
+        )
+        assertEquals(ChargingState.SLOW, rTrickle.state)
+    }
+
+    // AM. UI / Notification / Engine state consistency
+    @Test
+    fun testAM_UiNotificationEngineStateConsistency() {
+        val input = ChargingTelemetryInput(
+            isCharging = true,
+            powerSource = "AC",
+            currentNowMa = 3000,
+            voltageMv = 5000,
+            powerWatt = 15.0f,
+            measuredVelocityPctPerHr = 28.0f,
+            sessionDurationSeconds = 50L,
+            timestampMs = 1000L
+        )
+        val engineResult = ChargingClassificationEngine.classify(input)
+        val legacyUiState = ChargingEngine.classifyChargingType(
+            isCharging = true,
+            powerWatt = 15.0f,
+            currentNowMa = 3000,
+            voltageMv = 5000,
+            sessionDurationSeconds = 50L,
+            measuredRatePctPerHr = 28.0f,
+            powerSource = "AC"
+        )
+        val deterministicUiState = DeterministicChargingEngine.evaluate(
+            isCharging = true,
+            sessionDurationSeconds = 50L,
+            measuredRatePctPerHr = 28.0f,
+            powerWatt = 15.0f,
+            currentMa = 3000,
+            voltageMv = 5000,
+            temperatureCelsius = 25f,
+            temperatureTrend = "STABLE",
+            isScreenOn = false,
+            powerSource = "AC"
+        )
+        assertEquals(engineResult.displayName, legacyUiState)
+        assertEquals(engineResult.displayName, deterministicUiState.state.displayName)
+    }
 }
