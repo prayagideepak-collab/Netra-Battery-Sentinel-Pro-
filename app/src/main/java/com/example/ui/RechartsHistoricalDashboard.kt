@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ChargingSession
@@ -104,70 +105,6 @@ fun RechartsHistoricalDashboard(
                     info = if (isSpike) "⚠️ Thermal Spike: ${temp}°C" else if (isCharging) "Charging" else "Discharging"
                 )
             )
-        }
-
-        // 2. Fallback / Demonstration simulation if room database logs are empty or sparse
-        if (list.size < 4) {
-            list.clear()
-            val totalSteps = 24
-            val stepMs = selectedTimeFrame.durationMs / totalSteps
-            val timeFormatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
-
-            for (i in 0..totalSteps) {
-                val pointTime = startTime + (i * stepMs)
-                // Realistic battery curve simulation
-                val level = when (i) {
-                    0 -> 95f
-                    1, 2, 3 -> 95f - (i * 4f)
-                    4, 5, 6 -> 83f - ((i - 3) * 6f)
-                    7 -> 62f
-                    8, 9 -> 58f - ((i - 7) * 9f) // High drain load
-                    10 -> 40f
-                    11, 12, 13 -> 40f + ((i - 10) * 18f) // Charging period
-                    14, 15 -> 94f - ((i - 13) * 3f)
-                    16, 17, 18 -> 88f - ((i - 15) * 8f) // Workload spike
-                    19, 20 -> 64f - ((i - 18) * 10f)
-                    21, 22, 23 -> 44f + ((i - 20) * 17f) // Fast charge
-                    else -> 95f
-                }.coerceIn(5f, 100f)
-
-                val isCharging = i in 11..13 || i in 21..23
-                // Thermal sensor pattern with safety spikes during heavy load & fast charge
-                val temp = when (i) {
-                    8 -> 39.5f  // Safety sensor spike 1 (Warm)
-                    9 -> 43.2f  // Safety sensor spike 2 (Critical)
-                    12 -> 38.8f // Fast charge thermal buildup
-                    13 -> 41.5f // Thermal spike during charge
-                    18 -> 39.8f // Workload thermal spike
-                    19 -> 44.1f // High temperature spike
-                    else -> 28.5f + (i % 5) * 1.4f
-                }
-
-                val isSpike = temp >= 38.0f
-                val severity = when {
-                    temp >= 45.0f -> "OVERHEAT"
-                    temp >= 42.0f -> "CRITICAL"
-                    temp >= 38.0f -> "WARM"
-                    else -> "NORMAL"
-                }
-
-                val rate = if (isCharging) -18.5f else (4.2f + (temp - 30f).coerceAtLeast(0f) * 0.8f)
-                val volt = if (isCharging) 4320 else (4150 - (100 - level.toInt()) * 4)
-
-                list.add(
-                    RechartsDataPoint(
-                        timestamp = pointTime,
-                        level = level,
-                        temperature = temp,
-                        isCharging = isCharging,
-                        dischargeRate = rate,
-                        voltage = volt,
-                        isSpike = isSpike,
-                        spikeSeverity = severity,
-                        info = if (isSpike) "⚠️ Safety Sensor Spike: ${String.format(Locale.US, "%.1f", temp)}°C" else if (isCharging) "Charging Session" else "Standard Discharge"
-                    )
-                )
-            }
         }
 
         list.sortBy { it.timestamp }
@@ -539,9 +476,18 @@ fun HistoricalMetricCard(
                     .height(140.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF121624))
-                    .padding(4.dp)
+                    .padding(4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
+                if (points.isEmpty()) {
+                    Text(
+                        text = "No historical telemetry points for this timeframe",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
                     val width = size.width
                     val height = size.height
                     val paddingLeft = 28.dp.toPx()
@@ -663,6 +609,7 @@ fun HistoricalMetricCard(
                         }
                     }
                 }
+            }
             }
 
             Spacer(modifier = Modifier.height(6.dp))

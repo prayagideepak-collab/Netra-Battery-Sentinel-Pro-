@@ -36,18 +36,7 @@ fun NetraWidgetsSimulation(
     state: BatteryState,
     modifier: Modifier = Modifier
 ) {
-    val actualState = if (state.isDataAvailable) state else BatteryState(
-        percentage = 65,
-        isCharging = true,
-        timeTo100Min = 45,
-        remainingTimeMs = 3600000L,
-        temperature = 28.5f,
-        voltage = 4120,
-        currentNow = 250,
-        health = "Good",
-        speed = 4.2f,
-        chargingType = "AC"
-    )
+    val actualState = state
     val sdf = remember { SimpleDateFormat("hh:mm a", Locale.US) }
     var currentTime by remember { mutableStateOf(sdf.format(Date())) }
     
@@ -413,42 +402,19 @@ fun LargeWidget(state: BatteryState, bgColor: Color, primaryColor: Color) {
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            // Fake Graph Area
+            // Live Battery Level Bar
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Battery Usage (Last 6 Hours)", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Spacer(modifier = Modifier.height(8.dp))
-                Canvas(modifier = Modifier.fillMaxWidth().height(40.dp)) {
-                    val pts = listOf(1f, 0.9f, 0.85f, 0.75f, 0.6f, 0.78f)
-                    val w = size.width
-                    val h = size.height
-                    val step = w / (pts.size - 1)
-                    
-                    val path = androidx.compose.ui.graphics.Path()
-                    path.moveTo(0f, h - (pts[0] * h))
-                    for (i in 1 until pts.size) {
-                        path.lineTo(i * step, h - (pts[i] * h))
-                    }
-                    drawPath(
-                        path = path,
-                        color = primaryColor,
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                    // Draw dots
-                    for (i in pts.indices) {
-                        drawCircle(
-                            color = primaryColor,
-                            radius = 4.dp.toPx(),
-                            center = androidx.compose.ui.geometry.Offset(i * step, h - (pts[i] * h))
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("10 AM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                    Text("12 PM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                    Text("02 PM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                    Text("04 PM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
+                    Text("Current Charge", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
+                    Text("${state.percentage}%", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { (state.percentage / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = primaryColor,
+                    trackColor = Color.White.copy(alpha = 0.1f)
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -541,41 +507,19 @@ fun SmartWidget(state: BatteryState, bgColor: Color, primaryColor: Color) {
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            // Fake Graph Area
+            // Live Battery Level Bar
             Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Battery Usage (Last 6 Hours)", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-                Spacer(modifier = Modifier.height(8.dp))
-                Canvas(modifier = Modifier.fillMaxWidth().height(40.dp)) {
-                    val pts = listOf(1f, 0.9f, 0.85f, 0.75f, 0.6f, 0.78f)
-                    val w = size.width
-                    val h = size.height
-                    val step = w / (pts.size - 1)
-                    
-                    val path = androidx.compose.ui.graphics.Path()
-                    path.moveTo(0f, h - (pts[0] * h))
-                    for (i in 1 until pts.size) {
-                        path.lineTo(i * step, h - (pts[i] * h))
-                    }
-                    drawPath(
-                        path = path,
-                        color = primaryColor,
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                    for (i in pts.indices) {
-                        drawCircle(
-                            color = primaryColor,
-                            radius = 4.dp.toPx(),
-                            center = androidx.compose.ui.geometry.Offset(i * step, h - (pts[i] * h))
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("10 AM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                    Text("12 PM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                    Text("02 PM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
-                    Text("04 PM", color = Color.White.copy(alpha = 0.5f), fontSize = 8.sp)
+                    Text("Current Charge", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
+                    Text("${state.percentage}%", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
+                Spacer(modifier = Modifier.height(6.dp))
+                LinearProgressIndicator(
+                    progress = { (state.percentage / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                    color = primaryColor,
+                    trackColor = Color.White.copy(alpha = 0.1f)
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.1f))

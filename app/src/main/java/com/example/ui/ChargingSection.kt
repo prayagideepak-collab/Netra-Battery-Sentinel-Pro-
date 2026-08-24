@@ -45,100 +45,34 @@ fun ChargingSection(viewModel: BatteryViewModel) {
     val sessionList by viewModel.sessions.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // 1. Live Telemetry State (Updated every 300ms when charging is true)
-    var isChargingState by remember { mutableStateOf(false) }
-    var livePercentage by remember { mutableStateOf(0) }
-    var liveCurrentNow by remember { mutableStateOf(0f) }
-    var liveVoltage by remember { mutableStateOf(0f) }
-    var liveTemp by remember { mutableStateOf(0f) }
-    var livePower by remember { mutableStateOf(0f) }
-    var liveSource by remember { mutableStateOf("None") }
-    var liveHealth by remember { mutableStateOf("Good") }
-    var liveClassification by remember { mutableStateOf("None") }
+    // 1. Live Telemetry State derived from authoritative BatteryState
+    val isChargingState = state.isCharging
+    val livePercentage = state.percentage
+    val liveCurrentNow = kotlin.math.abs(state.currentNow.toFloat())
+    val liveVoltage = if (state.voltage > 0) state.voltage / 1000f else 0f
+    val liveTemp = if (state.temperature > -900f) state.temperature else 0f
+    val livePower = (liveCurrentNow * liveVoltage) / 1000f
+    val liveSource = state.chargingType.takeIf { it.isNotBlank() } ?: "None"
+    val liveHealth = state.health
+    val liveClassification = if (state.chargingSpeed.isNotBlank() && state.chargingSpeed != "None") {
+        state.chargingSpeed
+    } else if (isChargingState) {
+        "STANDARD CHARGING"
+    } else {
+        "DISCONNECTED"
+    }
 
-    // Rolling graph buffer for live Current (mA)
+    // Rolling graph buffer for live Current (mA) from authoritative stream
     val liveGraphBuffer = remember { mutableStateListOf<Float>() }
 
-    // Real-time loop (runs only when charging)
-    LaunchedEffect(state.isCharging) {
-        if (state.isCharging) {
-            isChargingState = true
-            while (state.isCharging) {
-                val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-                val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-
-                // Percentage
-                val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-                val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-                livePercentage = if (level != -1 && scale > 0) (level * 100 / scale) else state.percentage
-
-                // Current Now
-                val rawCurrent = try {
-                    batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-                } catch (e: Exception) {
-                    0
-                }
-                // Normalize to mA
-                var currentMA = rawCurrent / 1000f
-                if (Math.abs(currentMA) > 15000f) currentMA /= 1000f
-                liveCurrentNow = Math.abs(currentMA)
-
-                // Voltage V
-                val rawVoltage = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
-                liveVoltage = rawVoltage / 1000f
-
-                // Temperature
-                val rawTemp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-                liveTemp = rawTemp / 10f
-
-                // Power Wattage
-                livePower = (liveCurrentNow * liveVoltage) / 1000f
-
-                // Source
-                val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
-                liveSource = when (plugged) {
-                    BatteryManager.BATTERY_PLUGGED_AC -> "AC Wall Adapter"
-                    BatteryManager.BATTERY_PLUGGED_USB -> "USB Port"
-                    BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Charging"
-                    else -> "Unknown Port"
-                }
-
-                // Health
-                val healthInt = intent?.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_UNKNOWN) ?: BatteryManager.BATTERY_HEALTH_UNKNOWN
-                liveHealth = when (healthInt) {
-                    BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
-                    BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheated"
-                    BatteryManager.BATTERY_HEALTH_DEAD -> "Dead"
-                    BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over Voltage"
-                    BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "Failed"
-                    BatteryManager.BATTERY_HEALTH_COLD -> "Cold"
-                    else -> "Unknown"
-                }
-
-                // Temperature Speed Intelligence (Classification Engine)
-                val isFastCharging = livePower >= 9.5f || (plugged == BatteryManager.BATTERY_PLUGGED_AC)
-                liveClassification = when {
-                    isFastCharging && liveTemp >= 39.0f -> "FAST CHARGING · THERMAL WARNING"
-                    isFastCharging && liveTemp >= 38.0f -> "FAST CHARGING · ELEVATED THERMALS"
-                    isFastCharging -> "FAST CHARGING"
-                    plugged == BatteryManager.BATTERY_PLUGGED_USB -> "NORMAL USB CHARGING"
-                    plugged == BatteryManager.BATTERY_PLUGGED_WIRELESS -> "SLOW WIRELESS CHARGING"
-                    else -> "STANDARD CHARGING"
-                }
-
-                // Append validated reading to rolling graph buffer
-                if (liveCurrentNow > 0) {
-                    if (liveGraphBuffer.size >= 30) {
-                        liveGraphBuffer.removeAt(0)
-                    }
-                    liveGraphBuffer.add(liveCurrentNow)
-                }
-
-                // Up to ~300ms update frequency
-                delay(300L)
+    LaunchedEffect(state.currentNow, state.isCharging) {
+        if (state.isCharging && liveCurrentNow > 0) {
+            if (liveGraphBuffer.size >= 30) {
+                liveGraphBuffer.removeAt(0)
             }
-        } else {
-            isChargingState = false
+            liveGraphBuffer.add(liveCurrentNow)
+        } else if (!state.isCharging) {
+            liveGraphBuffer.clear()
         }
     }
 

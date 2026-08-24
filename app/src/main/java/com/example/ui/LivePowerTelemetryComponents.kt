@@ -330,12 +330,28 @@ fun ZeroLineTelemetryMicroGraph(
     positiveColor: Color = Color(0xFF00E676),
     negativeColor: Color = Color(0xFFFF5252)
 ) {
+    if (points.isEmpty()) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(80.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Awaiting telemetry stream...",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+        return
+    }
+
     var touchedIndex by remember { mutableStateOf<Int?>(null) }
     
-    // Ensure we have at least baseline representation
     val effectivePoints = remember(points) {
         if (points.size < 2) {
-            listOf(0f, points.firstOrNull() ?: 0f)
+            val base = points.first()
+            listOf(base, base)
         } else {
             points
         }
@@ -511,10 +527,26 @@ fun StandardTelemetryMicroGraph(
     lineColor: Color,
     modifier: Modifier = Modifier
 ) {
+    if (points.isEmpty()) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(70.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Awaiting telemetry stream...",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+        }
+        return
+    }
+
     var touchedIndex by remember { mutableStateOf<Int?>(null) }
     val effectivePoints = remember(points) {
         if (points.size < 2) {
-            val base = points.firstOrNull() ?: 0f
+            val base = points.first()
             listOf(base, base)
         } else {
             points

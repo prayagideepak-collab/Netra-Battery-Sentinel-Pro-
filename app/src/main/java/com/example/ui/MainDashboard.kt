@@ -304,6 +304,7 @@ fun TimeUntilAnalyticsCard(batteryStateState: androidx.compose.runtime.State<com
 @Composable
 fun AuthoritativeBatteryRuntimeCard(
     batteryStateState: androidx.compose.runtime.State<com.example.service.BatteryState>,
+    runtimePoints: List<Float> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val state by batteryStateState
@@ -381,15 +382,16 @@ fun AuthoritativeBatteryRuntimeCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Dedicated Battery Runtime Graph
-            Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                InteractiveRealtimeGraph(
-                    points = if (isCharging) listOf(0.3f, 0.45f, 0.6f, 0.75f, 0.9f, 1.0f) else listOf(1.0f, 0.9f, 0.75f, 0.6f, 0.45f, 0.3f),
-                    labelY = "",
-                    lineColor = if (isCharging) Color(0xFF00E676) else Color(0xFFFF1744)
-                )
+            if (runtimePoints.size >= 2) {
+                Spacer(modifier = Modifier.height(12.dp))
+                // Dedicated Battery Runtime Graph from Authoritative History
+                Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                    InteractiveRealtimeGraph(
+                        points = runtimePoints,
+                        labelY = "",
+                        lineColor = if (isCharging) Color(0xFF00E676) else Color(0xFFFF1744)
+                    )
+                }
             }
         }
     }
@@ -855,9 +857,15 @@ fun MonitorScreen(
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
+        val authHistory by viewModel.authoritativeHistory.collectAsStateWithLifecycle()
+        val runtimePoints = remember(authHistory) {
+            authHistory.takeLast(30).map { it.batteryLevel / 100f }
+        }
+
         // Authoritative Battery Runtime Card
         AuthoritativeBatteryRuntimeCard(
             batteryStateState = batteryStateState,
+            runtimePoints = runtimePoints,
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
@@ -3134,85 +3142,34 @@ fun SessionAnalyticsDialog(
                                 )
                             }
 
-                            // Generate and Draw Simulated Sensor Paths
-                            val pointsCount = 12
-                            val pointsVoltage = mutableListOf<Offset>()
-                            val pointsTemp = mutableListOf<Offset>()
-                            val pointsCurrent = mutableListOf<Offset>()
+                            // Plot actual session transition line from startPercentage to endPercentage
+                            val startP = session.startPercentage
+                            val endP = session.endPercentage ?: session.startPercentage
+                            val startNorm = (startP.coerceIn(0, 100) / 100f)
+                            val endNorm = (endP.coerceIn(0, 100) / 100f)
+                            val yStart = h * (1.0f - startNorm * 0.8f - 0.1f)
+                            val yEnd = h * (1.0f - endNorm * 0.8f - 0.1f)
 
-                            for (i in 0 until pointsCount) {
-                                val x = w * (i / (pointsCount - 1).toFloat())
-                                
-                                val voltFactor = if (session.isDischarge) {
-                                    1.0f - (i / (pointsCount - 1).toFloat()) * 0.3f // decreasing voltage
-                                } else {
-                                    0.1f + (i / (pointsCount - 1).toFloat()) * 0.8f // increasing voltage
-                                }
-                                val yVolt = h * (1.0f - voltFactor * 0.7f - 0.15f)
-                                pointsVoltage.add(Offset(x, yVolt))
-
-                                val tempFactor = if (session.isDischarge) {
-                                    // slight rise then stabilization or cooling
-                                    0.2f + kotlin.math.sin((i / (pointsCount - 1).toFloat()) * Math.PI.toFloat()) * 0.15f
-                                } else {
-                                    // continuous rise then peak
-                                    0.1f + (i / (pointsCount - 1).toFloat()) * 0.6f
-                                }
-                                val yTemp = h * (1.0f - tempFactor * 0.8f - 0.1f)
-                                pointsTemp.add(Offset(x, yTemp))
-
-                                val currentFactor = if (session.isDischarge) {
-                                    // fluctuating discharge pull
-                                    0.3f + kotlin.math.sin((i / 2f) * Math.PI.toFloat()) * 0.1f
-                                } else {
-                                    // high intake first, then constant current drops to constant voltage
-                                    if (i < pointsCount * 0.7f) 0.8f else 0.8f - ((i - pointsCount * 0.7f) / (pointsCount * 0.3f)) * 0.6f
-                                }
-                                val yCurrent = h * (1.0f - currentFactor * 0.8f - 0.1f)
-                                pointsCurrent.add(Offset(x, yCurrent))
-                            }
-
-                            // Helper function to draw smooth lines
-                            fun drawSmoothLine(points: List<Offset>, color: Color) {
-                                val path = Path()
-                                if (points.isNotEmpty()) {
-                                    path.moveTo(points[0].x, points[0].y)
-                                    for (j in 1 until points.size) {
-                                        path.lineTo(points[j].x, points[j].y)
-                                    }
-                                    drawPath(
-                                        path = path,
-                                        color = color,
-                                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                    )
-                                }
-                            }
-
-                            drawSmoothLine(pointsVoltage, Color(0xFF2196F3)) // Blue for Volt
-                            drawSmoothLine(pointsTemp, Color(0xFFFF5722))    // Orange for Temp
-                            drawSmoothLine(pointsCurrent, Color(0xFF4CAF50)) // Green for Ampere
+                            val lineColor = if (session.isDischarge) Color(0xFFFF5722) else Color(0xFF00E676)
+                            drawLine(
+                                color = lineColor,
+                                start = Offset(0f, yStart),
+                                end = Offset(w, yEnd),
+                                strokeWidth = 2.5.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                            drawCircle(color = lineColor, radius = 4.dp.toPx(), center = Offset(0f, yStart))
+                            drawCircle(color = lineColor, radius = 4.dp.toPx(), center = Offset(w, yEnd))
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFF2196F3), CircleShape))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Voltage", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFFF5722), CircleShape))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Temperature", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(8.dp).background(Color(0xFF4CAF50), CircleShape))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Current/Power", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
+                        Text("Start: ${session.startPercentage}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Delta: ${kotlin.math.abs(session.startPercentage - (session.endPercentage ?: session.startPercentage))}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("End: ${session.endPercentage ?: session.startPercentage}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -3363,13 +3320,8 @@ fun SessionAnalyticsDialog(
 @Composable
 fun BatteryTrendChart(sessions: List<ChargingSession>) {
     val points = remember(sessions) {
-        // extract percentage peaks for drawing curve
-        if (sessions.isEmpty()) {
-            listOf(25f, 40f, 38f, 55f, 75f, 70f, 85f)
-        } else {
-            sessions.take(10).reversed().map { session ->
-                session.endPercentage?.toFloat() ?: session.startPercentage.toFloat()
-            }
+        sessions.take(10).reversed().mapNotNull { session ->
+            session.endPercentage?.toFloat() ?: session.startPercentage.toFloat()
         }
     }
 
@@ -3396,45 +3348,60 @@ fun BatteryTrendChart(sessions: List<ChargingSession>) {
             }
             Spacer(modifier = Modifier.height(14.dp))
             
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-            ) {
-                val width = size.width
-                val height = size.height
-                val maxVal = 100f
-                val minVal = 0f
-                val size = points.size
-                val stepX = if (size > 1) width / (size - 1) else width
-                
-                val path = Path()
-                points.forEachIndexed { index, value ->
-                    val x = index * stepX
-                    val y = height - ((value - minVal) / (maxVal - minVal)) * height
-                    if (index == 0) {
-                        path.moveTo(x, y)
-                    } else {
-                        path.lineTo(x, y)
-                    }
-                }
-                
-                // Draw curve lines
-                drawPath(
-                    path = path,
-                    color = Color(0xFF3DDC84),
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                )
-
-                // Draw dots
-                points.forEachIndexed { index, value ->
-                    val x = index * stepX
-                    val y = height - ((value - minVal) / (maxVal - minVal)) * height
-                    drawCircle(
-                        color = Color(0xFF4285F4),
-                        radius = 4.dp.toPx(),
-                        center = androidx.compose.ui.geometry.Offset(x, y)
+            if (points.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No charging sessions recorded yet",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
+                }
+            } else {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                ) {
+                    val width = size.width
+                    val height = size.height
+                    val maxVal = 100f
+                    val minVal = 0f
+                    val pSize = points.size
+                    val stepX = if (pSize > 1) width / (pSize - 1) else width
+                    
+                    val path = Path()
+                    points.forEachIndexed { index, value ->
+                        val x = index * stepX
+                        val y = height - ((value - minVal) / (maxVal - minVal)) * height
+                        if (index == 0) {
+                            path.moveTo(x, y)
+                        } else {
+                            path.lineTo(x, y)
+                        }
+                    }
+                    
+                    // Draw curve lines
+                    drawPath(
+                        path = path,
+                        color = Color(0xFF3DDC84),
+                        style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                    )
+
+                    // Draw dots
+                    points.forEachIndexed { index, value ->
+                        val x = index * stepX
+                        val y = height - ((value - minVal) / (maxVal - minVal)) * height
+                        drawCircle(
+                            color = Color(0xFF4285F4),
+                            radius = 4.dp.toPx(),
+                            center = androidx.compose.ui.geometry.Offset(x, y)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -9431,41 +9398,27 @@ fun NormalModularDashboard(
         if (bluetoothHistory.size > 20) bluetoothHistory.removeAt(0)
     }
 
-    // Populate initial points if empty
+    // Populate single initial point if empty and real data exists
     if (batteryHistory.isEmpty() && state.percentage >= 0) {
-        repeat(10) { batteryHistory.add(state.percentage.toFloat()) }
+        batteryHistory.add(state.percentage.toFloat())
     }
     if (thermalHistory.isEmpty() && state.temperature > 0) {
-        repeat(10) { thermalHistory.add(state.temperature) }
+        thermalHistory.add(state.temperature)
     }
-    if (magneticHistory.isEmpty()) {
-        repeat(10) { magneticHistory.add(state.magneticFieldMagnitude) }
+    if (magneticHistory.isEmpty() && state.magneticFieldMagnitude > 0) {
+        magneticHistory.add(state.magneticFieldMagnitude)
     }
-    if (currentHistory.isEmpty()) {
-        repeat(10) { currentHistory.add(kotlin.math.abs(state.currentNow).toFloat()) }
+    if (currentHistory.isEmpty() && state.currentNow != 0) {
+        currentHistory.add(kotlin.math.abs(state.currentNow).toFloat())
     }
-    if (voltageHistory.isEmpty()) {
-        repeat(10) { voltageHistory.add(state.voltage / 1000f) }
+    if (voltageHistory.isEmpty() && state.voltage > 0) {
+        voltageHistory.add(state.voltage / 1000f)
     }
-    if (chargingHistory.isEmpty()) {
-        repeat(10) { chargingHistory.add(kotlin.math.abs(state.currentNow).toFloat()) }
+    if (chargingHistory.isEmpty() && state.currentNow != 0) {
+        chargingHistory.add(kotlin.math.abs(state.currentNow).toFloat())
     }
-    if (storageHistory.isEmpty()) {
-        try {
-            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-            val total = stat.blockSizeLong * stat.blockCountLong
-            val available = stat.blockSizeLong * stat.availableBlocksLong
-            val used = (total - available) / (1024f * 1024f * 1024f)
-            repeat(10) { storageHistory.add(used) }
-        } catch (e: Exception) {
-            repeat(10) { storageHistory.add(45f) }
-        }
-    }
-    if (ramHistory.isEmpty()) {
-        repeat(10) { ramHistory.add(42f) }
-    }
-    if (weatherHistory.isEmpty()) {
-        repeat(10) { weatherHistory.add(state.outdoorTemp) }
+    if (weatherHistory.isEmpty() && state.outdoorTemp > -900f) {
+        weatherHistory.add(state.outdoorTemp)
     }
 
     Column(
