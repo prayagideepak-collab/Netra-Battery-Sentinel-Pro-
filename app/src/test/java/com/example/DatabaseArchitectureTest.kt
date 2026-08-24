@@ -73,9 +73,25 @@ class DatabaseArchitectureTest {
         assertEquals(302, retrieved302?.versionCode)
         assertEquals("3.1.0-sql-build-302", retrieved302?.versionName)
 
+        // Step 4: Increment version from 302 to 303 on startup / state upgrade
+        val version303 = AppVersionEntity(
+            id = 1,
+            versionCode = (retrieved302?.versionCode ?: 302) + 1,
+            versionName = "3.1.0-sql-build-303",
+            lastUpdatedTimestamp = System.currentTimeMillis(),
+            changeDescription = "Auto-updated SQL Database version on application startup & state change (v303)"
+        )
+        batteryDao.insertAppVersion(version303)
+
+        val retrieved303 = batteryDao.getAppVersionDirect()
+        assertNotNull(retrieved303)
+        assertEquals(303, retrieved303?.versionCode)
+        assertEquals("3.1.0-sql-build-303", retrieved303?.versionName)
+
         // Flow verification
         val flowVersion = batteryDao.getAppVersion().first()
-        assertEquals(302, flowVersion?.versionCode)
+        assertEquals(303, flowVersion?.versionCode)
+        assertEquals("3.1.0-sql-build-303", flowVersion?.versionName)
     }
 
     @Test
