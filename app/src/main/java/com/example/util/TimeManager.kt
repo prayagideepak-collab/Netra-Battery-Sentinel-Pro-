@@ -90,22 +90,26 @@ object TimeManager {
     }
 
     /**
-     * Calculates charging ETA in milliseconds.
+     * Calculates charging ETA in milliseconds. Returns -1L if unavailable.
      */
     fun calculateChargingEtaMs(percentage: Int, timeTo100Min: Int): Long {
+        if (percentage >= 100) return 0L
         if (timeTo100Min > 0) {
             return timeTo100Min * 60L * 1000L
         }
-        val remainingPct = (100 - percentage).coerceAtLeast(0)
-        return remainingPct * 60L * 1000L
+        return -1L // Signal: Calculating / Insufficient Telemetry
     }
 
     /**
-     * Calculates discharge remaining time in milliseconds.
+     * Calculates discharge remaining time in milliseconds. Returns -1L if unavailable.
      */
     fun calculateDischargeRemainingMs(percentage: Int, speed: Float): Long {
-        val validSpeed = if (speed > 0f) speed else 5.2f
-        val remainingHours = percentage.toFloat() / validSpeed
-        return (remainingHours * 3600_000L).toLong().coerceAtLeast(0L)
+        if (percentage <= 0) return 0L
+        val dischargeMinutes = com.example.battery.engine.BatteryPredictionEngine.estimateTimeToEmptyMinutes(
+            currentPercentage = percentage,
+            velocityPercentPerHour = if (speed > 0f) -speed else speed
+        )
+        return dischargeMinutes?.let { it * 60L * 1000L } ?: -1L
     }
+
 }

@@ -47,13 +47,21 @@ class NetraBatteryWidget : AppWidgetProvider() {
             val isOvercharging = state.isCharging && state.overchargeDurationMs > 0
             val remainingMs = if (isOvercharging) {
                 state.overchargeDurationMs
+            } else if (state.remainingTimeMs >= 0L) {
+                state.remainingTimeMs
             } else if (state.isCharging) {
                 TimeManager.calculateChargingEtaMs(state.percentage, state.timeTo100Min)
             } else {
                 TimeManager.calculateDischargeRemainingMs(state.percentage, state.speed)
             }
-            val remainingText = "⏳ ${TimeManager.formatDurationMs(remainingMs)}"
+            val remainingText = when {
+                remainingMs > 0L -> "⏳ ${TimeManager.formatDurationMs(remainingMs)}"
+                remainingMs == 0L && state.isCharging && state.percentage >= 100 -> "⏳ Full (100%)"
+                remainingMs == 0L && !state.isCharging && state.percentage <= 0 -> "⏳ Empty (0%)"
+                else -> "⏳ Calculating..."
+            }
             views.setTextViewText(R.id.widget_remaining_time, remainingText)
+
 
             // Health
             views.setTextViewText(R.id.widget_health, "❤️ Health: ${state.health} (${state.healthPercentage}%)")

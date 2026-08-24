@@ -2159,16 +2159,11 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             speed = realTimeSpeed
             val targetCharge = settings.fullBatteryThreshold
 
-            // Predictions (0 if speed not yet available)
-            if (speed >= 0.5f) {
-                timeTo50 = if (percentage < 50) (((50 - percentage) / speed) * 60).toInt() else 0
-                timeTo80 = if (percentage < 80) (((80 - percentage) / speed) * 60).toInt() else 0
-                timeTo100 = if (percentage < targetCharge) (((targetCharge - percentage) / speed) * 60).toInt() else 0
-            } else {
-                timeTo50 = 0
-                timeTo80 = 0
-                timeTo100 = 0
-            }
+            // Predictions via authoritative BatteryPredictionEngine (0 if speed not yet available)
+            timeTo50 = com.example.battery.engine.BatteryPredictionEngine.estimateTimeToFullMinutes(percentage, speed, targetPercentage = 50)?.toInt() ?: 0
+            timeTo80 = com.example.battery.engine.BatteryPredictionEngine.estimateTimeToFullMinutes(percentage, speed, targetPercentage = 80)?.toInt() ?: 0
+            timeTo100 = com.example.battery.engine.BatteryPredictionEngine.estimateTimeToFullMinutes(percentage, speed, targetPercentage = targetCharge)?.toInt() ?: 0
+
 
             // Check for temperature & speed alerts while charging
             checkChargingAlerts(temperature, sessionDurationHr, realTimeSpeed, settings, percentage)

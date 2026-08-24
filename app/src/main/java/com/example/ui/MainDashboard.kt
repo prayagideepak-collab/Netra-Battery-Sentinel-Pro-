@@ -8504,16 +8504,13 @@ fun ActiveChargingMonitorCard(
     var runningSecondsLeft by remember { mutableStateOf(0) }
 
     // Synchronize starting seconds left whenever state updates
-    LaunchedEffect(state.percentage, state.isCharging, state.speed) {
-        if (state.isCharging) {
-            val pctRemaining = 100 - state.percentage
-            val speedPctPerHour = if (state.speed > 1f) state.speed else 35f
-            val hoursToFull = pctRemaining / speedPctPerHour
-            runningSecondsLeft = (hoursToFull * 3600).toInt().coerceAtLeast(0)
+    LaunchedEffect(state.percentage, state.isCharging, state.remainingTimeMs) {
+        if (state.remainingTimeMs > 0L) {
+            runningSecondsLeft = (state.remainingTimeMs / 1000L).toInt()
+        } else if (state.remainingTimeMs == 0L) {
+            runningSecondsLeft = 0
         } else {
-            val speed = if (state.speed > 0f) state.speed else 5.2f
-            val remainingHours = state.percentage.toFloat() / speed
-            runningSecondsLeft = (remainingHours * 3600).toInt().coerceAtLeast(0)
+            runningSecondsLeft = -1
         }
     }
 
@@ -8527,9 +8524,10 @@ fun ActiveChargingMonitorCard(
         }
     }
 
-    val hours = runningSecondsLeft / 3600
-    val minutes = (runningSecondsLeft % 3600) / 60
-    val seconds = runningSecondsLeft % 60
+    val safeSeconds = runningSecondsLeft.coerceAtLeast(0)
+    val hours = safeSeconds / 3600
+    val minutes = (safeSeconds % 3600) / 60
+    val seconds = safeSeconds % 60
     
     val isCritical = state.temperature >= 41f || (!state.isCharging && state.percentage <= 15)
     val isWarm = state.temperature >= 37f || (!state.isCharging && state.percentage <= 25)
@@ -8658,7 +8656,12 @@ fun ActiveChargingMonitorCard(
                             color = Color.White.copy(alpha = 0.6f)
                         )
                         Text(
-                            text = if (state.percentage >= 100) "Battery Fully Charged!" else String.format(java.util.Locale.US, "%02dh %02dm %02ds", hours, minutes, seconds),
+                            text = when {
+                                state.isCharging && state.percentage >= 100 -> "Battery Fully Charged!"
+                                !state.isCharging && state.percentage <= 0 -> "Battery Fully Discharged!"
+                                runningSecondsLeft < 0 -> "Calculating..."
+                                else -> String.format(java.util.Locale.US, "%02dh %02dm %02ds", hours, minutes, seconds)
+                            },
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White
@@ -8681,9 +8684,9 @@ fun ActiveChargingMonitorCard(
                         )
                         Text(
                             text = if (state.isCharging) {
-                                "Rate: ${String.format(java.util.Locale.US, "%.1f", state.speed)}%/h"
+                                if (state.speed > 0f) "Rate: ${String.format(java.util.Locale.US, "%.1f", state.speed)}%/h" else "Rate: Calculating..."
                             } else {
-                                "Drain: ${String.format(java.util.Locale.US, "%.1f", if (state.speed > 0f) state.speed else 5.2f)}%/h"
+                                if (state.speed > 0f) "Drain: ${String.format(java.util.Locale.US, "%.1f", state.speed)}%/h" else "Drain: Calculating..."
                             },
                             fontSize = 10.sp,
                             color = Color.White.copy(alpha = 0.6f)
