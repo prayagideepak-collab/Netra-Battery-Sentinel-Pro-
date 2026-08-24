@@ -10,9 +10,27 @@ enum class EtaConfidence {
     STABLE
 }
 
+enum class EtaSource {
+    MEASURED_PERCENTAGE_VELOCITY,
+    HARDWARE_CURRENT_AND_VALIDATED_CAPACITY,
+    UNAVAILABLE
+}
+
+data class AuthoritativeEtaResult(
+    val remainingTimeMs: Long, // -1L = Calculating / Unavailable, 0L = Target Reached
+    val confidence: EtaConfidence,
+    val source: EtaSource,
+    val isAvailable: Boolean
+)
+
 /**
  * Authoritative clean prediction engine for battery charging and discharge times.
- * Strictly validates inputs and never generates fake or guessed ETAs.
+ * Strictly adheres to the Deterministic Priority Policy:
+ * Priority A: Measured battery-percentage velocity with sufficient reliable history (Preferred source)
+ * Priority B: Valid hardware current + VALIDATED actual battery capacity (Secondary source)
+ * Priority C: Neither reliable source available -> Unavailable / Calculating (-1L)
+ * 
+ * NEVER uses an arbitrary hardcoded battery capacity (e.g. 4500 mAh) or fake fallback rates.
  */
 object BatteryPredictionEngine {
 
@@ -24,6 +42,9 @@ object BatteryPredictionEngine {
     private var lastChargingState: Boolean? = null
     @Volatile
     var currentConfidence: EtaConfidence = EtaConfidence.INITIALIZING
+        private set
+    @Volatile
+    var currentSource: EtaSource = EtaSource.UNAVAILABLE
         private set
 
     private val sampleRates = mutableListOf<Float>()
@@ -115,10 +136,16 @@ object BatteryPredictionEngine {
         lastPredictionTimestamp = 0L
         sampleRates.clear()
         currentConfidence = EtaConfidence.INITIALIZING
+        currentSource = EtaSource.UNAVAILABLE
     }
 
     /**
      * Authoritative remaining time calculation in milliseconds.
+     * Implements deterministic priority selection:
+     * Priority A: Measured battery-percentage velocity
+     * Priority B: Hardware current + VALIDATED actual capacity
+     * Priority C: Unavailable / Calculating (-1L)
+     * 
      * Returns -1L if ETA cannot be reliably determined (Calculating / Initializing).
      * Returns 0L if 100% (charging) or 0% (discharging).
      */
@@ -128,15 +155,42 @@ object BatteryPredictionEngine {
         isCharging: Boolean,
         currentNowVal: Int, // mA
         isScreenOn: Boolean,
-        capacity: Int, // mAh
+        capacity: Int?, // mAh (MUST be validated or null)
         speed: Float, // % per hour
         targetPercentage: Int = 100
     ): Long {
-        if (percentage !in 0..100) {
+        return calculateAuthoritativeEta(
+            percentage = percentage,
+            isCharging = isCharging,
+            currentNowVal = currentNowVal,
+            isScreenOn = isScreenOn,
+            capacity = capacity,
+            speed = speed,
+            targetPercentage = targetPercentage
+        ).remainingTimeMs
+    }
+
+    /**
+     * Comprehensive Authoritative ETA resolution returning metadata, source, and confidence.
+     */
+    @Synchronized
+    fun calculateAuthoritativeEta(
+        percentage: Int,
+        isCharging: Boolean,
+        currentNowVal: Int, // mA
+        isScreenOn: Boolean,
+        capacity: Int?, // mAh (Must be verified device capacity)
+        speed: Float, // % per hour
+        targetPercentage: Int = 100
+    ): AuthoritativeEtaResult {
+        // 1. Strict percentage boundary validation
+        if (percentage !in 0..100 || targetPercentage !in 1..100) {
             currentConfidence = EtaConfidence.INITIALIZING
-            return -1L
+            currentSource = EtaSource.UNAVAILABLE
+            return AuthoritativeEtaResult(-1L, EtaConfidence.INITIALIZING, EtaSource.UNAVAILABLE, false)
         }
 
+        // 2. State transition invalidation check
         if (lastChargingState != null && lastChargingState != isCharging) {
             invalidateStateTransition(isCharging)
         }
@@ -145,84 +199,104 @@ object BatteryPredictionEngine {
         val now = System.currentTimeMillis()
 
         if (isCharging) {
-            if (percentage >= 100 || (targetPercentage in 1..99 && percentage >= targetPercentage)) {
+            // Target percentage already reached
+            if (percentage >= 100 || percentage >= targetPercentage) {
                 currentConfidence = EtaConfidence.STABLE
+                currentSource = EtaSource.MEASURED_PERCENTAGE_VELOCITY
                 lastValidPredictionMs = 0L
                 lastPredictionTimestamp = now
-                return 0L
+                return AuthoritativeEtaResult(0L, EtaConfidence.STABLE, EtaSource.MEASURED_PERCENTAGE_VELOCITY, true)
             }
 
-            // Primary: Real Rate
+            // PRIORITY A: Measured Battery Percentage Velocity (Preferred Source)
             if (!speed.isNaN() && !speed.isInfinite() && speed > 0f) {
                 val etaMinutes = estimateTimeToFullMinutes(percentage, speed, targetPercentage)
                 if (etaMinutes != null) {
                     val predictionMs = (etaMinutes * 60_000L).coerceIn(60_000L, MAX_CHARGE_TIME_MS)
-                    currentConfidence = if (speed >= 0.5f) EtaConfidence.STABLE else EtaConfidence.ESTIMATING
+                    val conf = if (speed >= 0.5f) EtaConfidence.STABLE else EtaConfidence.ESTIMATING
+                    currentConfidence = conf
+                    currentSource = EtaSource.MEASURED_PERCENTAGE_VELOCITY
                     lastValidPredictionMs = predictionMs
                     lastPredictionTimestamp = now
-                    return predictionMs
+                    return AuthoritativeEtaResult(predictionMs, conf, EtaSource.MEASURED_PERCENTAGE_VELOCITY, true)
                 }
             }
 
-            // Secondary: Hardware Charging Current (mA)
+            // PRIORITY B: Hardware Current + VALIDATED Actual Capacity (Secondary Source)
+            val isValidCapacity = BatteryCapacityEngine.isValidCapacity(capacity)
             val currentMa = abs(currentNowVal)
-            val validCapacity = if (capacity > 0) capacity else 4500
-            if (currentMa >= 150) {
+            // Require verified hardware charging current (> 150mA) AND proven device capacity
+            if (isValidCapacity && capacity != null && currentNowVal > 0 && currentMa >= 150) {
                 val remainingPct = (targetPercentage - percentage).coerceAtLeast(0)
-                val remainingMah = (validCapacity * remainingPct) / 100f
+                val remainingMah = (capacity * remainingPct) / 100f
                 val hours = remainingMah / currentMa.toFloat()
-                val predictionMs = (hours * 3600_000L).toLong().coerceIn(60_000L, MAX_CHARGE_TIME_MS)
-                currentConfidence = EtaConfidence.ESTIMATING
-                lastValidPredictionMs = predictionMs
-                lastPredictionTimestamp = now
-                return predictionMs
+                if (!hours.isNaN() && !hours.isInfinite() && hours > 0f) {
+                    val predictionMs = (hours * 3600_000L).toLong().coerceIn(60_000L, MAX_CHARGE_TIME_MS)
+                    currentConfidence = EtaConfidence.ESTIMATING
+                    currentSource = EtaSource.HARDWARE_CURRENT_AND_VALIDATED_CAPACITY
+                    lastValidPredictionMs = predictionMs
+                    lastPredictionTimestamp = now
+                    return AuthoritativeEtaResult(predictionMs, EtaConfidence.ESTIMATING, EtaSource.HARDWARE_CURRENT_AND_VALIDATED_CAPACITY, true)
+                }
             }
 
+            // PRIORITY C: Neither reliable source available -> Unavailable / Calculating (-1L)
             currentConfidence = EtaConfidence.INITIALIZING
+            currentSource = EtaSource.UNAVAILABLE
             lastValidPredictionMs = -1L
-            return -1L
+            return AuthoritativeEtaResult(-1L, EtaConfidence.INITIALIZING, EtaSource.UNAVAILABLE, false)
         } else {
+            // Discharging state
             if (percentage <= 0) {
                 currentConfidence = EtaConfidence.STABLE
+                currentSource = EtaSource.MEASURED_PERCENTAGE_VELOCITY
                 lastValidPredictionMs = 0L
                 lastPredictionTimestamp = now
-                return 0L
+                return AuthoritativeEtaResult(0L, EtaConfidence.STABLE, EtaSource.MEASURED_PERCENTAGE_VELOCITY, true)
             }
 
-            // Primary: Real Discharge Rate
+            // PRIORITY A: Measured Battery Percentage Discharge Rate (Preferred Source)
             val signedSpeed = if (speed > 0f) -speed else speed
             if (!signedSpeed.isNaN() && !signedSpeed.isInfinite() && signedSpeed < 0f) {
                 val etaMinutes = estimateTimeToEmptyMinutes(percentage, signedSpeed)
                 if (etaMinutes != null) {
                     val predictionMs = (etaMinutes * 60_000L).coerceIn(300_000L, MAX_DISCHARGE_TIME_MS)
-                    currentConfidence = if (abs(signedSpeed) >= 0.5f) EtaConfidence.STABLE else EtaConfidence.ESTIMATING
+                    val conf = if (abs(signedSpeed) >= 0.5f) EtaConfidence.STABLE else EtaConfidence.ESTIMATING
+                    currentConfidence = conf
+                    currentSource = EtaSource.MEASURED_PERCENTAGE_VELOCITY
                     lastValidPredictionMs = predictionMs
                     lastPredictionTimestamp = now
-                    return predictionMs
+                    return AuthoritativeEtaResult(predictionMs, conf, EtaSource.MEASURED_PERCENTAGE_VELOCITY, true)
                 }
             }
 
-            // Secondary: Hardware Discharge Current (mA)
+            // PRIORITY B: Hardware Current + VALIDATED Actual Capacity (Secondary Source)
+            val isValidCapacity = BatteryCapacityEngine.isValidCapacity(capacity)
             val drainMa = abs(currentNowVal)
-            val validCapacity = if (capacity > 0) capacity else 4500
-            if (drainMa >= 40) {
+            // In discharging mode, currentNowVal is negative or measured drain >= 40mA with verified capacity
+            if (isValidCapacity && capacity != null && (currentNowVal < 0 || drainMa >= 40) && drainMa >= 40) {
                 if (sampleRates.size >= 10) sampleRates.removeAt(0)
                 sampleRates.add(drainMa.toFloat())
                 val avgDrain = sampleRates.average().toFloat()
                 if (avgDrain > 0f) {
-                    val remainingMah = (validCapacity * percentage) / 100f
+                    val remainingMah = (capacity * percentage) / 100f
                     val hours = remainingMah / avgDrain
-                    val predictionMs = (hours * 3600_000L).toLong().coerceIn(300_000L, MAX_DISCHARGE_TIME_MS)
-                    currentConfidence = EtaConfidence.ESTIMATING
-                    lastValidPredictionMs = predictionMs
-                    lastPredictionTimestamp = now
-                    return predictionMs
+                    if (!hours.isNaN() && !hours.isInfinite() && hours > 0f) {
+                        val predictionMs = (hours * 3600_000L).toLong().coerceIn(300_000L, MAX_DISCHARGE_TIME_MS)
+                        currentConfidence = EtaConfidence.ESTIMATING
+                        currentSource = EtaSource.HARDWARE_CURRENT_AND_VALIDATED_CAPACITY
+                        lastValidPredictionMs = predictionMs
+                        lastPredictionTimestamp = now
+                        return AuthoritativeEtaResult(predictionMs, EtaConfidence.ESTIMATING, EtaSource.HARDWARE_CURRENT_AND_VALIDATED_CAPACITY, true)
+                    }
                 }
             }
 
+            // PRIORITY C: Neither reliable source available -> Unavailable / Calculating (-1L)
             currentConfidence = EtaConfidence.INITIALIZING
+            currentSource = EtaSource.UNAVAILABLE
             lastValidPredictionMs = -1L
-            return -1L
+            return AuthoritativeEtaResult(-1L, EtaConfidence.INITIALIZING, EtaSource.UNAVAILABLE, false)
         }
     }
 
@@ -232,4 +306,3 @@ object BatteryPredictionEngine {
         return String.format(Locale.US, "%.1f", remainingYears).toDouble()
     }
 }
-

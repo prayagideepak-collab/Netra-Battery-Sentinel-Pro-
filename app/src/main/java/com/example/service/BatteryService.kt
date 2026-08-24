@@ -2147,12 +2147,13 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             val sessionDurationHr = if (sessionStartTime > 0L) (now - sessionStartTime) / 3600000f else 0f
             val sessionGainedPct = (percentage - sessionStartPercentage).coerceAtLeast(0)
 
+            val detectedCap = com.example.battery.engine.BatteryCapacityEngine.detectValidatedCapacity(this).capacityMah
             val realTimeSpeed = if (sessionDurationHr >= 0.0083f && sessionGainedPct > 0) {
                 sessionGainedPct / sessionDurationHr
             } else {
-                // Instantaneous hardware-derived rate if valid current is measured (> 150mA)
-                if (currentNowVal >= 150) {
-                    (currentNowVal.toFloat() / 4500f) * 100f
+                // Instantaneous hardware-derived rate if valid current is measured (> 150mA) and capacity is validated
+                if (currentNowVal >= 150 && detectedCap != null && detectedCap > 0) {
+                    (currentNowVal.toFloat() / detectedCap.toFloat()) * 100f
                 } else 0f
             }
 
@@ -2223,12 +2224,13 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                 // Track discharging stats strictly from real session telemetry
                 val dischargeDurationHr = if (sessionStartTime > 0L) (now - sessionStartTime) / 3600000f else 0f
                 val dischargeLostPct = (sessionStartPercentage - percentage).coerceAtLeast(0)
+                val detectedCap = com.example.battery.engine.BatteryCapacityEngine.detectValidatedCapacity(this).capacityMah
                 val dischargeRate = if (dischargeDurationHr >= 0.0083f && dischargeLostPct > 0) {
                     dischargeLostPct / dischargeDurationHr
                 } else {
                     val drainMa = Math.abs(currentNowVal)
-                    if (drainMa >= 40) {
-                        (drainMa.toFloat() / 4500f) * 100f
+                    if (drainMa >= 40 && detectedCap != null && detectedCap > 0) {
+                        (drainMa.toFloat() / detectedCap.toFloat()) * 100f
                     } else 0f
                 }
                 speed = dischargeRate // Positive magnitude for rate display
@@ -2288,17 +2290,22 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         }
         val computedHealthPct = (100 - (simulatedCycles / 100)).coerceIn(80, 100)
         
-        // New AI Prediction Engine using BatteryPredictionEngine
-        val currentCapacity = (computedHealthPct * 4500) / 100
-        val remainingTimeMs = com.example.engines.BatteryPredictionEngine.calculateRemainingTimeMs(
+        // Authoritative Device Battery Capacity Validation
+        val validatedCapResult = com.example.battery.engine.BatteryCapacityEngine.detectValidatedCapacity(this)
+        val validDesignCapacity = validatedCapResult.capacityMah
+        val validatedEstimatedCap = validDesignCapacity?.let { (computedHealthPct * it) / 100 }
+        
+        // Authoritative ETA prediction strictly respecting priority policy
+        val authoritativeEta = com.example.engines.BatteryPredictionEngine.calculateAuthoritativeEta(
             percentage = percentage,
             isCharging = isCharging,
             currentNowVal = currentNowVal,
             isScreenOn = isScreenOn,
-            capacity = currentCapacity,
+            capacity = validatedEstimatedCap ?: validDesignCapacity,
             speed = speed,
             targetPercentage = settings.fullBatteryThreshold
         )
+        val remainingTimeMs = authoritativeEta.remainingTimeMs
         val usableHealthPct = (computedHealthPct - 80).coerceAtLeast(0)
         val monthsRemaining = (usableHealthPct * 1.25f).coerceAtLeast(0.5f)
         val replacementDateTimestamp = System.currentTimeMillis() + (monthsRemaining * 30L * 86400000L).toLong()
@@ -2386,7 +2393,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                 isScreenOn = isScreenOn,
                 powerSource = chargingType
             ),
-            etaConfidence = com.example.engines.BatteryPredictionEngine.currentConfidence.name,
             isDataTransferActive = isDataTransferActive,
             usbDataMode = usbDataMode,
             ambientLightLux = lastAmbientLight,
@@ -2418,8 +2424,8 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             screenOnMinutes = screenOnMin,
             deepSleepMinutes = standbyMin,
             batteryDrainRatePerHr = calculatedDrainRate,
-            designCapacity = 4500,
-            estimatedCapacity = currentCapacity,
+            designCapacity = validDesignCapacity,
+            estimatedCapacity = validatedEstimatedCap,
             manufacturer = Build.MANUFACTURER,
             model = Build.MODEL,
             lat = currentState.lat,
@@ -2427,6 +2433,8 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             cityName = currentState.cityName,
             locationStatus = currentState.locationStatus,
             remainingTimeMs = remainingTimeMs,
+            etaConfidence = authoritativeEta.confidence.name,
+            etaSource = authoritativeEta.source.name,
             overchargeDurationMs = overchargeDurationMs,
             replacementDateTimestamp = replacementDateTimestamp,
             confidenceScore = 96,

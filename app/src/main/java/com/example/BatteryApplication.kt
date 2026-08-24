@@ -117,7 +117,7 @@ class BatteryApplication : Application() {
                     val dao = database?.batteryDao()
                     if (dao != null) {
                         val existingVersion = dao.getAppVersionDirect()
-                        val newVersionCode = (existingVersion?.versionCode ?: 300) + 1
+                        val newVersionCode = (existingVersion?.versionCode?.coerceAtLeast(302) ?: 302) + 1
                         val newVersionName = "3.1.0-sql-build-$newVersionCode"
                         dao.insertAppVersion(
                             com.example.data.AppVersionEntity(
@@ -125,7 +125,7 @@ class BatteryApplication : Application() {
                                 versionCode = newVersionCode,
                                 versionName = newVersionName,
                                 lastUpdatedTimestamp = System.currentTimeMillis(),
-                                changeDescription = "Auto-updated SQL Database version on application startup & state change"
+                                changeDescription = "Auto-updated SQL Database version on application startup & state change (v$newVersionCode)"
                             )
                         )
                         Log.i("NetraBoot", "SQL Database Version updated to: $newVersionName (Code: $newVersionCode)")

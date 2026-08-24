@@ -92,8 +92,8 @@ data class BatteryState(
     val batteryDrainRatePerHr: Float = -1f, // -1f = Insufficient sample history
 
     // Hardware parameters
-    val designCapacity: Int = 4500, // mAh
-    val estimatedCapacity: Int = 4410, // mAh (designCapacity * healthPercentage / 100)
+    val designCapacity: Int? = null, // mAh (Null if unverified/unavailable)
+    val estimatedCapacity: Int? = null, // mAh (Null if unverified/unavailable)
     val manufacturer: String = "Google",
     val model: String = "Pixel 8",
     val appStartDate: Long = System.currentTimeMillis(),
@@ -105,6 +105,7 @@ data class BatteryState(
     val overchargeDurationMs: Long = 0L,
     val remainingTimeMs: Long = -1L, // -1L = Calculating / Initializing
     val etaConfidence: String = "INITIALIZING", // "INITIALIZING", "ESTIMATING", "STABLE"
+    val etaSource: String = "UNAVAILABLE", // "MEASURED_PERCENTAGE_VELOCITY", "HARDWARE_CURRENT_AND_VALIDATED_CAPACITY", "UNAVAILABLE"
     val replacementDateTimestamp: Long = 0L,
     val predictionConfidence: Int = 100,
     val isPocketModeActive: Boolean = false,

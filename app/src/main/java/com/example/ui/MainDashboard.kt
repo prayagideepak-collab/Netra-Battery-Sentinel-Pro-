@@ -3568,7 +3568,7 @@ fun shareOfflineReport(context: Context, sessions: List<ChargingSession>, state:
     builder.append("Generated on: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
     builder.append("Device Model: ${state.manufacturer} ${state.model}\n")
     builder.append("Health Status: ${state.health} (${state.healthPercentage}%)\n")
-    builder.append("Typical Capacity: ${state.designCapacity} mAh\n")
+    builder.append("Typical Capacity: ${state.designCapacity?.let { "$it mAh" } ?: "Unverified"}\n")
 // Estimated capacity removed for factual accuracy
 
     builder.append("=== SYSTEM PERFORMANCE METRICS ===\n")
@@ -5364,7 +5364,7 @@ fun BatteryHealthCertificateDialog(state: BatteryState, onDismiss: () -> Unit) {
                 // Certificate stats
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Design Capacity", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                    Text("${state.designCapacity} mAh", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(state.designCapacity?.let { "$it mAh" } ?: "Unverified", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Current Health Capacity", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
@@ -9853,12 +9853,12 @@ fun EstimatedBatteryHealthView(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Est. Capacity: ${state.estimatedCapacity} mAh",
+                    text = "Est. Capacity: ${state.estimatedCapacity?.let { "$it mAh" } ?: "Unavailable"}",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Design: ${state.designCapacity} mAh",
+                    text = "Design: ${state.designCapacity?.let { "$it mAh" } ?: "Unverified"}",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -9990,7 +9990,7 @@ fun BatteryModuleView(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "Design Capacity: ${state.designCapacity} mAh",
+                            text = "Design Capacity: ${state.designCapacity?.let { "$it mAh" } ?: "Unverified"}",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

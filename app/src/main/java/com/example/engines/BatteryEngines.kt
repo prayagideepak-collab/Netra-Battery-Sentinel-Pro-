@@ -13,12 +13,17 @@ import java.util.Locale
  * Made with ❤️ by Prayagi Ji
  */
 
-// 1. Battery Prediction Engine
+// 1. Battery Prediction Engine Delegation
 typealias EtaConfidence = com.example.battery.engine.EtaConfidence
+typealias EtaSource = com.example.battery.engine.EtaSource
+typealias AuthoritativeEtaResult = com.example.battery.engine.AuthoritativeEtaResult
 
 object BatteryPredictionEngine {
     val currentConfidence: EtaConfidence
         get() = com.example.battery.engine.BatteryPredictionEngine.currentConfidence
+
+    val currentSource: EtaSource
+        get() = com.example.battery.engine.BatteryPredictionEngine.currentSource
 
     fun predictAgingYears(healthPct: Int): Double {
         return com.example.battery.engine.BatteryPredictionEngine.predictAgingYears(healthPct)
@@ -33,11 +38,31 @@ object BatteryPredictionEngine {
         isCharging: Boolean,
         currentNowVal: Int,
         isScreenOn: Boolean,
-        capacity: Int,
+        capacity: Int?,
         speed: Float,
-        targetPercentage: Int
+        targetPercentage: Int = 100
     ): Long {
         return com.example.battery.engine.BatteryPredictionEngine.calculateRemainingTimeMs(
+            percentage = percentage,
+            isCharging = isCharging,
+            currentNowVal = currentNowVal,
+            isScreenOn = isScreenOn,
+            capacity = capacity,
+            speed = speed,
+            targetPercentage = targetPercentage
+        )
+    }
+
+    fun calculateAuthoritativeEta(
+        percentage: Int,
+        isCharging: Boolean,
+        currentNowVal: Int,
+        isScreenOn: Boolean,
+        capacity: Int?,
+        speed: Float,
+        targetPercentage: Int = 100
+    ): AuthoritativeEtaResult {
+        return com.example.battery.engine.BatteryPredictionEngine.calculateAuthoritativeEta(
             percentage = percentage,
             isCharging = isCharging,
             currentNowVal = currentNowVal,
@@ -224,8 +249,6 @@ object DeviceIntelligenceEngine {
             if (current < -1200) score -= 12
         }
 
-        // Storage penalty estimate (mocked comfortably for system wellness score)
-        // Let's assume a healthy comfort score
         return score.coerceIn(10, 100)
     }
 }

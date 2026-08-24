@@ -342,8 +342,8 @@ fun DashboardSection(
                 ) {
                     HealthSubMetric(
                         label = "EST. CAPACITY",
-                        value = "${state.estimatedCapacity} mAh",
-                        detail = "Design: ${state.designCapacity} mAh"
+                        value = state.estimatedCapacity?.let { "$it mAh" } ?: "Unavailable",
+                        detail = state.designCapacity?.let { "Design: $it mAh" } ?: "Design: Unverified"
                     )
                     HealthSubMetric(
                         label = "CYCLE COUNT",
