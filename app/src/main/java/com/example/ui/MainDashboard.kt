@@ -1814,36 +1814,36 @@ fun hasUsageStatsPermission(context: Context): Boolean {
 @android.annotation.SuppressLint("MissingPermission")
 fun getAppBatteryUsageList(context: Context): List<AppBatteryUsage> {
     if (!hasUsageStatsPermission(context)) {
-        return listOf(
-            AppBatteryUsage("Instagram", "com.instagram.android", 18.2f, 45 * 60 * 1000L, 2 * 60 * 60 * 1000L, System.currentTimeMillis() - 10 * 60 * 1000L, false, 120f, "High"),
-            AppBatteryUsage("YouTube", "com.google.android.youtube", 14.5f, 60 * 60 * 1000L, 15 * 60 * 1000L, System.currentTimeMillis() - 30 * 60 * 1000L, false, 180f, "High"),
-            AppBatteryUsage("Chrome", "com.android.chrome", 9.8f, 30 * 60 * 1000L, 2 * 60 * 60 * 1000L, System.currentTimeMillis() - 5 * 60 * 1000L, true, 80f, "Medium"),
-            AppBatteryUsage("WhatsApp", "com.whatsapp", 7.1f, 20 * 60 * 1000L, 3 * 60 * 60 * 1000L, System.currentTimeMillis() - 1 * 60 * 1000L, true, 50f, "Medium"),
-            AppBatteryUsage("Google Maps", "com.google.android.apps.maps", 6.4f, 15 * 60 * 1000L, 45 * 60 * 1000L, System.currentTimeMillis() - 2 * 60 * 60 * 1000L, false, 140f, "Medium"),
-            AppBatteryUsage("Spotify", "com.spotify.music", 4.8f, 5 * 60 * 1000L, 1 * 60 * 60 * 1000L, System.currentTimeMillis() - 4 * 60 * 1000L, true, 90f, "Low"),
-            AppBatteryUsage("System Idle", "android", 3.5f, 0L, 24 * 60 * 60 * 1000L, System.currentTimeMillis(), true, 15f, "Low"),
-            AppBatteryUsage("Gmail", "com.google.android.gm", 2.1f, 8 * 60 * 1000L, 1 * 60 * 60 * 1000L, System.currentTimeMillis() - 1 * 60 * 1000L, false, 25f, "Low")
-        )
+        return emptyList()
     }
 
     val attrCtx = com.example.util.getAttributionContext(context)
-    val usageStatsManager = attrCtx.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+    val usageStatsManager = attrCtx.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager ?: return emptyList()
     val pm = context.packageManager
     val endTime = System.currentTimeMillis()
     val startTime = endTime - 24 * 60 * 60 * 1000L
     val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
 
     if (stats.isNullOrEmpty()) {
-        return listOf(
-            AppBatteryUsage("Instagram", "com.instagram.android", 18.2f, 45 * 60 * 1000L, 2 * 60 * 60 * 1000L, System.currentTimeMillis() - 10 * 60 * 1000L, false, 120f, "High"),
-            AppBatteryUsage("YouTube", "com.google.android.youtube", 14.5f, 60 * 60 * 1000L, 15 * 60 * 1000L, System.currentTimeMillis() - 30 * 60 * 1000L, false, 180f, "High"),
-            AppBatteryUsage("Chrome", "com.android.chrome", 9.8f, 30 * 60 * 1000L, 2 * 60 * 60 * 1000L, System.currentTimeMillis() - 5 * 60 * 1000L, true, 80f, "Medium")
-        )
+        return emptyList()
     }
 
-    val sortedStats = stats.filter { it.totalTimeInForeground > 10000L }
+    val installedStats = stats.filter { stat ->
+        try {
+            pm.getApplicationInfo(stat.packageName, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    val sortedStats = installedStats.filter { it.totalTimeInForeground > 10000L }
         .sortedByDescending { it.totalTimeInForeground }
         .take(10)
+
+    if (sortedStats.isEmpty()) {
+        return emptyList()
+    }
 
     val totalForegroundTime = sortedStats.sumOf { it.totalTimeInForeground }.coerceAtLeast(1)
 
@@ -1855,27 +1855,19 @@ fun getAppBatteryUsageList(context: Context): List<AppBatteryUsage> {
             stat.packageName.split(".").lastOrNull()?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() } ?: stat.packageName
         }
 
-        val pct = (stat.totalTimeInForeground.toFloat() / totalForegroundTime.toFloat()) * 30f + 1f
+        val pct = (stat.totalTimeInForeground.toFloat() / totalForegroundTime.toFloat()) * 100f
         val isRunning = stat.totalTimeInForeground > 0 && (System.currentTimeMillis() - stat.lastTimeUsed < 5 * 60 * 1000L)
-        val drainRate = if (stat.packageName.contains("youtube") || stat.packageName.contains("camera") || stat.packageName.contains("game")) 180f else 60f
-
-        val rating = when {
-            pct >= 15f -> "Extreme"
-            pct >= 8f -> "High"
-            pct >= 4f -> "Medium"
-            else -> "Low"
-        }
 
         AppBatteryUsage(
             name = appName,
             packageName = stat.packageName,
             usagePercentage = Math.round(pct * 10) / 10f,
             foregroundTimeMs = stat.totalTimeInForeground,
-            backgroundTimeMs = stat.totalTimeInForeground / 3,
+            backgroundTimeMs = 0L,
             lastActiveTime = stat.lastTimeUsed,
             isRunning = isRunning,
-            estimatedDrainRate = drainRate,
-            drainRating = rating
+            estimatedDrainRate = 0f,
+            drainRating = "UNAVAILABLE"
         )
     }
 }
@@ -1923,14 +1915,14 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
-                                    .background(Color(0xFF43A047), CircleShape)
+                                    .background(if (apps.isNotEmpty() && totalEstimatedDrain > 0f) Color(0xFF43A047) else Color.Gray, CircleShape)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Permissionless NTA Telemetry",
+                                text = if (apps.isNotEmpty() && totalEstimatedDrain > 0f) "Validated App Telemetry" else "Telemetry Unavailable",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF43A047)
+                                color = if (apps.isNotEmpty() && totalEstimatedDrain > 0f) Color(0xFF43A047) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -1941,7 +1933,7 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "REAL-TIME",
+                        text = "LIVE",
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary,
@@ -1954,7 +1946,7 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
 
             // Explanation / Heuristic Info
             Text(
-                text = "Netra is tracking individual app drain permissionlessly using Netra Telemetry Attribution (NTA). By matching screen interactive states against real battery current draws, we mathematically model each app's power cost without invasive system permissions.",
+                text = "Netra monitors app foreground lifecycle and battery stats from system services without fabrication. Real per-app hardware mAh values require manufacturer privileged APIs.",
                 fontSize = 10.sp,
                 lineHeight = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
@@ -1972,8 +1964,8 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
             ) {
                 Column {
                     Text("Total App Drain", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                    val drainText = if (apps.isEmpty()) "UNAVAILABLE" else "${String.format(Locale.US, "%.1f", totalEstimatedDrain)} mAh"
-                    Text(text = drainText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    val drainText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "UNAVAILABLE" else "${String.format(Locale.US, "%.1f", totalEstimatedDrain)} mAh"
+                    Text(text = drainText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Active Apps", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
@@ -1984,14 +1976,14 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
                                 .background(if (apps.isNotEmpty() && activeAppsCount > 0) Color(0xFF4CAF50) else Color.Gray, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        val runningText = if (apps.isEmpty()) "UNAVAILABLE" else "$activeAppsCount running"
+                        val runningText = if (apps.isEmpty()) "UNAVAILABLE" else if (activeAppsCount == 0) "STATUS UNAVAILABLE" else "$activeAppsCount running"
                         Text(text = runningText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Attribution Engine", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                    val engineText = if (apps.isEmpty()) "NOT INITIALIZED" else "NTA v1.2 Active"
-                    Text(text = engineText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    val engineText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "NO VALID TELEMETRY" else "Validated Active"
+                    Text(text = engineText, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -2026,10 +2018,11 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
                         // Letter / App Icon Badge
                         val firstChar = app.appName.firstOrNull()?.toString()?.uppercase() ?: "A"
                         val badgeColor = when (app.drainRating) {
-                            "Extreme" -> Color(0xFFEF5350) // Premium Red Coral
-                            "High" -> Color(0xFFFF9800) // Orange Accent
-                            "Medium" -> Color(0xFFFFD54F) // Warm Amber
-                            else -> Color(0xFF4CAF50) // Emerald Green
+                            "Extreme" -> Color(0xFFEF5350)
+                            "High" -> Color(0xFFFF9800)
+                            "Medium" -> Color(0xFFFFD54F)
+                            "Low" -> Color(0xFF4CAF50)
+                            else -> MaterialTheme.colorScheme.outline
                         }
 
                         Box(
@@ -2083,26 +2076,29 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
                                 
                                 val usagePct = if (totalEstimatedDrain > 0) (app.consumedMah / totalEstimatedDrain) * 100f else 0f
                                 Row(verticalAlignment = Alignment.Bottom) {
+                                    val mahText = if (app.consumedMah > 0f) "${String.format(Locale.US, "%.1f", app.consumedMah)} mAh" else "UNAVAILABLE"
                                     Text(
-                                        text = "${String.format(Locale.US, "%.1f", app.consumedMah)} mAh",
+                                        text = mahText,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = if (app.consumedMah > 0f) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "(${String.format(Locale.US, "%.1f", usagePct)}%)",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-                                    )
+                                    if (app.consumedMah > 0f) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "(${String.format(Locale.US, "%.1f", usagePct)}%)",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                    }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            // Premium Custom Progress Bar
-                            val progressFraction = if (totalEstimatedDrain > 0) (app.consumedMah / totalEstimatedDrain).coerceIn(0f, 1f) else 0f
+                            // Custom Progress Bar
+                            val progressFraction = if (totalEstimatedDrain > 0 && app.consumedMah > 0f) (app.consumedMah / totalEstimatedDrain).coerceIn(0f, 1f) else 0f
                             
                             Box(
                                 modifier = Modifier
@@ -2137,17 +2133,19 @@ fun AppConsumptionCard(viewModel: BatteryViewModel) {
                             ) {
                                 val fgMins = app.foregroundTimeMs / 60000L
                                 val bgMins = app.backgroundTimeMs / 60000L
+                                val bgText = if (app.backgroundTimeMs > 0L) "Background: ${bgMins}m" else "Background: UNAVAILABLE"
                                 Text(
-                                    text = "Foreground: ${fgMins}m  •  Background: ${bgMins}m",
+                                    text = "Foreground: ${fgMins}m  •  $bgText",
                                     fontSize = 9.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                 )
 
+                                val rateText = if (app.estimatedDrainRate > 0f) "Rate: ${String.format(Locale.US, "%.1f", app.estimatedDrainRate)} mAh/h" else "Rate: UNAVAILABLE"
                                 Text(
-                                    text = "Rate: ${String.format(Locale.US, "%.1f", app.estimatedDrainRate)} mAh/h",
+                                    text = rateText,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = badgeColor.copy(alpha = 0.9f)
+                                    color = if (app.estimatedDrainRate > 0f) badgeColor.copy(alpha = 0.9f) else MaterialTheme.colorScheme.outline
                                 )
                             }
                         }
@@ -9148,52 +9146,20 @@ fun SecretBatteryCollectorsCard(viewModel: BatteryViewModel) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (apps.isEmpty()) {
+            if (apps.isEmpty() || backgroundApps.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "UNAVAILABLE\nSecurity restrictions prevent background process energy tracking.",
+                        text = "UNAVAILABLE / NO ANOMALOUS DRAIN DETECTED\nNo installed background applications exhibit anomalous wakeups or active background leakage.",
                         fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.error,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
                 }
             } else {
-                val displayList = remember(backgroundApps, apps) {
-                    if (backgroundApps.isNotEmpty()) {
-                        backgroundApps
-                    } else {
-                        listOf(
-                            com.example.data.AppConsumptionEntity(
-                                packageName = "com.facebook.services",
-                                appName = "Facebook Background Services",
-                                backgroundTimeMs = 3600000L,
-                                consumedMah = 42.4f,
-                                drainRating = "High",
-                                isRunning = true
-                            ),
-                            com.example.data.AppConsumptionEntity(
-                                packageName = "com.google.android.gms.feedback",
-                                appName = "Google Play Analytics Core",
-                                backgroundTimeMs = 1800000L,
-                                consumedMah = 18.2f,
-                                drainRating = "Medium",
-                                isRunning = true
-                            ),
-                            com.example.data.AppConsumptionEntity(
-                                packageName = "com.stealth.adtracker.core",
-                                appName = "Stealth AdSDK Daemon",
-                                backgroundTimeMs = 720000L,
-                                consumedMah = 9.8f,
-                                drainRating = "High",
-                                isRunning = false
-                            )
-                        )
-                    }
-                }
-
+                val displayList = backgroundApps
                 val showList = if (isExpanded) displayList else displayList.take(3)
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -9247,20 +9213,23 @@ fun SecretBatteryCollectorsCard(viewModel: BatteryViewModel) {
                                 }
                             }
                             Column(horizontalAlignment = Alignment.End) {
+                                val mahText = if (item.consumedMah > 0f) "${String.format(Locale.US, "%.1f", item.consumedMah)} mAh" else "UNAVAILABLE"
                                 Text(
-                                    text = "${String.format(Locale.US, "%.1f", item.consumedMah)} mAh",
+                                    text = mahText,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.error
+                                    color = if (item.consumedMah > 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
                                 )
+                                val ratingText = if (item.consumedMah > 0f && item.drainRating != "UNAVAILABLE") "${item.drainRating} Risk" else "UNAVAILABLE"
                                 Text(
-                                    text = "${item.drainRating} Risk",
+                                    text = ratingText,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = when (item.drainRating) {
                                         "Extreme", "High" -> Color(0xFFE53935)
                                         "Medium" -> Color(0xFFFB8C00)
-                                        else -> Color(0xFF43A047)
+                                        "Low" -> Color(0xFF43A047)
+                                        else -> MaterialTheme.colorScheme.outline
                                     }
                                 )
                             }

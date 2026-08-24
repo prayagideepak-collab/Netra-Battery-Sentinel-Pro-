@@ -120,7 +120,7 @@ fun AppConsumptionTrackerScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Permissionless real-time process drain monitoring.",
+                            text = "Real device telemetry with validated app attribution when available.",
                             fontSize = 11.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -141,18 +141,18 @@ fun AppConsumptionTrackerScreen(
             ) {
                 Column {
                     Text("Aggregated App Drain", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val drainText = if (apps.isEmpty()) "UNAVAILABLE" else "${String.format(Locale.US, "%.1f", totalEstimatedDrain)} mAh"
-                    Text(text = drainText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                    val drainText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "UNAVAILABLE" else "${String.format(Locale.US, "%.1f", totalEstimatedDrain)} mAh"
+                    Text(text = drainText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("Active Apps", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val runningText = if (apps.isEmpty()) "UNAVAILABLE" else "$activeAppsCount running"
+                    val runningText = if (apps.isEmpty()) "UNAVAILABLE" else if (activeAppsCount == 0) "STATUS UNAVAILABLE" else "$activeAppsCount running"
                     Text(text = runningText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Attribution Engine", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val engineText = if (apps.isEmpty()) "NOT INITIALIZED" else "NTA v1.2 Active"
-                    Text(text = engineText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    val engineText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "NO VALID TELEMETRY" else "NTA Validated Active"
+                    Text(text = engineText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                 }
             }
         }
@@ -324,7 +324,8 @@ fun AppConsumptionItem(app: AppConsumptionEntity, onClick: () -> Unit) {
         "Extreme" -> Color(0xFFEF5350)
         "High" -> Color(0xFFFF9800)
         "Medium" -> Color(0xFFFFD54F)
-        else -> Color(0xFF4CAF50)
+        "Low" -> Color(0xFF4CAF50)
+        else -> MaterialTheme.colorScheme.outline
     }
 
     Card(
@@ -385,11 +386,12 @@ fun AppConsumptionItem(app: AppConsumptionEntity, onClick: () -> Unit) {
                         }
                     }
 
+                    val mahDisplay = if (app.consumedMah > 0f) "${String.format(Locale.US, "%.1f", app.consumedMah)} mAh" else "UNAVAILABLE"
                     Text(
-                        text = "${String.format(Locale.US, "%.1f", app.consumedMah)} mAh",
+                        text = mahDisplay,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (app.consumedMah > 0f) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
                     )
                 }
 
@@ -397,7 +399,7 @@ fun AppConsumptionItem(app: AppConsumptionEntity, onClick: () -> Unit) {
 
                 // Progress Bar indicating consumption proportion
                 val maxEst = 350f
-                val ratio = (app.consumedMah / maxEst).coerceIn(0f, 1f)
+                val ratio = if (app.consumedMah > 0f) (app.consumedMah / maxEst).coerceIn(0f, 1f) else 0f
                 LinearProgressIndicator(
                     progress = ratio,
                     modifier = Modifier
@@ -415,14 +417,16 @@ fun AppConsumptionItem(app: AppConsumptionEntity, onClick: () -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val ratingDisplay = if (app.consumedMah <= 0f || app.drainRating == "UNAVAILABLE") "Rating: UNAVAILABLE" else "Rating: ${app.drainRating}"
                     Text(
-                        text = "Rating: ${app.drainRating}",
+                        text = ratingDisplay,
                         fontSize = 9.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    val bgDisplay = if (app.backgroundTimeMs > 0L) "Background: ${TimeManager.formatDurationMs(app.backgroundTimeMs)}" else "Background: UNAVAILABLE"
                     Text(
-                        text = "Background: ${TimeManager.formatDurationMs(app.backgroundTimeMs)}",
+                        text = bgDisplay,
                         fontSize = 9.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

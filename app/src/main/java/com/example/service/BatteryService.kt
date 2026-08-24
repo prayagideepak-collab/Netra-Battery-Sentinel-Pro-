@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.TrafficStats
 import android.net.ConnectivityManager
 import android.hardware.Sensor
@@ -918,96 +919,65 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     private fun startAppConsumptionTracker() {
         serviceScope.launch(Dispatchers.IO) {
             val pm = packageManager
-            val defaultApps = listOf(
-                Pair("YouTube", "com.google.android.youtube"),
-                Pair("Chrome", "com.android.chrome"),
-                Pair("WhatsApp", "com.whatsapp"),
-                Pair("Instagram", "com.instagram.android"),
-                Pair("Spotify", "com.spotify.music"),
-                Pair("Gmail", "com.google.android.gm"),
-                Pair("Google Maps", "com.google.android.apps.maps"),
-                Pair("System Idle", "android")
-            )
 
-            // Get installed launcher apps to merge with default
-            val installedApps = mutableListOf<Pair<String, String>>()
-            try {
-                val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
-                    addCategory(Intent.CATEGORY_LAUNCHER)
+            // Authoritative discovery of currently installed applications
+            fun getInstalledAppPairs(): List<Pair<String, String>> {
+                val list = mutableListOf<Pair<String, String>>()
+                try {
+                    val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                    for (appInfo in installedApps) {
+                        val pkgName = appInfo.packageName
+                        if (pkgName != packageName) { // Exclude ourselves
+                            val label = pm.getApplicationLabel(appInfo).toString()
+                            list.add(Pair(label, pkgName))
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error querying installed applications", e)
                 }
-                val resolvedList = pm.queryIntentActivities(mainIntent, 0)
-                for (info in resolvedList) {
-                    val pkgName = info.activityInfo.packageName
-                    if (pkgName != packageName) { // Exclude ourselves from listing as external app
-                        val label = info.loadLabel(pm).toString()
-                        installedApps.add(Pair(label, pkgName))
+                return list
+            }
+
+            var currentInstalledApps = getInstalledAppPairs()
+            var installedPkgSet = currentInstalledApps.map { it.second }.toSet()
+
+            // Database reconciliation: Purge uninstalled or stale apps from database
+            try {
+                val dbApps = repository?.getAllAppConsumptionDirect() ?: emptyList()
+                val staleApps = dbApps.filter { !installedPkgSet.contains(it.packageName) }
+                if (staleApps.isNotEmpty()) {
+                    Log.i(TAG, "Purging ${staleApps.size} stale/uninstalled apps from app_consumption database")
+                    val validDbApps = dbApps.filter { installedPkgSet.contains(it.packageName) }
+                    repository?.clearAppConsumption()
+                    if (validDbApps.isNotEmpty()) {
+                        repository?.saveAppConsumption(validDbApps)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error querying launcher apps", e)
+                Log.e(TAG, "Error reconciling app consumption database", e)
             }
 
-            // Combine list, avoiding duplicates
-            val finalAppList = mutableListOf<Pair<String, String>>()
-            finalAppList.addAll(installedApps)
-            for (defaultApp in defaultApps) {
-                if (finalAppList.none { it.second == defaultApp.second }) {
-                    finalAppList.add(defaultApp)
-                }
-            }
-
-            // Ensure "System Idle" is always present
-            if (finalAppList.none { it.second == "android" }) {
-                finalAppList.add(Pair("System Idle", "android"))
-            }
-
-            // Load existing consumption from database
-            var dbApps = repository?.getAllAppConsumptionDirect()?.associateBy { it.packageName } ?: emptyMap()
-            
-            // If empty, pre-seed with realistic baseline values to avoid blank state
-            if (dbApps.isEmpty()) {
-                val initialList = mutableListOf<com.example.data.AppConsumptionEntity>()
-                val random = java.util.Random()
-                
-                for (app in finalAppList) {
-                    val baseMah = when (app.second) {
-                        "com.google.android.youtube" -> 25f + random.nextFloat() * 10f
-                        "com.instagram.android" -> 20f + random.nextFloat() * 8f
-                        "com.android.chrome" -> 15f + random.nextFloat() * 5f
-                        "com.whatsapp" -> 12f + random.nextFloat() * 4f
-                        "com.spotify.music" -> 8f + random.nextFloat() * 3f
-                        "android" -> 30f + random.nextFloat() * 10f
-                        else -> 5f + random.nextFloat() * 5f
-                    }
-                    val baseFg = when (app.second) {
-                        "android" -> 0L
-                        else -> (10 + random.nextInt(40)) * 60 * 1000L
-                    }
-                    val baseBg = (30 + random.nextInt(120)) * 60 * 1000L
-                    
-                    val rating = when {
-                        baseMah >= 25f -> "Extreme"
-                        baseMah >= 15f -> "High"
-                        baseMah >= 8f -> "Medium"
-                        else -> "Low"
-                    }
-                    
-                    initialList.add(
-                        com.example.data.AppConsumptionEntity(
-                            packageName = app.second,
-                            appName = app.first,
-                            foregroundTimeMs = baseFg,
-                            backgroundTimeMs = baseBg,
-                            consumedMah = baseMah,
-                            estimatedDrainRate = baseMah / ((baseFg + baseBg) / 3600000f).coerceAtLeast(1f),
-                            drainRating = rating,
-                            isRunning = false,
-                            lastActiveTime = System.currentTimeMillis() - random.nextInt(60 * 60 * 1000)
-                        )
+            // Sync installed apps into inventory and database without inventing fake telemetry
+            try {
+                val existingDbMap = repository?.getAllAppConsumptionDirect()?.associateBy { it.packageName } ?: emptyMap()
+                val syncList = currentInstalledApps.map { (label, pkg) ->
+                    existingDbMap[pkg] ?: com.example.data.AppConsumptionEntity(
+                        packageName = pkg,
+                        appName = label,
+                        foregroundTimeMs = 0L,
+                        backgroundTimeMs = 0L,
+                        consumedMah = 0f,
+                        estimatedDrainRate = 0f,
+                        drainRating = "UNAVAILABLE",
+                        isRunning = false,
+                        lastActiveTime = 0L
                     )
                 }
-                repository?.saveAppConsumption(initialList)
-                dbApps = initialList.associateBy { it.packageName }
+                if (syncList.isNotEmpty()) {
+                    repository?.saveAppConsumption(syncList)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing installed apps in database", e)
             }
 
             // Periodic monitoring loop (runs every 15 seconds)
@@ -1036,9 +1006,9 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                                     backgroundTimeMs = 0L,
                                     consumedMah = 0f,
                                     estimatedDrainRate = 0f,
-                                    drainRating = "Low",
+                                    drainRating = "UNAVAILABLE",
                                     isRunning = false,
-                                    lastActiveTime = System.currentTimeMillis()
+                                    lastActiveTime = 0L
                                 )
                             } ?: emptyList()
                             if (resetList.isNotEmpty()) {
@@ -1047,7 +1017,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                             repository?.logBatteryEventSync(
                                 eventType = "MIDNIGHT_RESET",
                                 title = "DAILY BOUNDARY RESET",
-                                details = "Calendar date changed. Netra App Consumption stats successfully reset to zero bounds for the new day.",
+                                details = "Calendar date changed. Netra App Consumption stats reset for new day.",
                                 category = "INTELLIGENCE",
                                 source = "Netra"
                             )
@@ -1056,13 +1026,23 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                         }
                     }
 
-                    // Periodically update app inventory dynamically
-                    if (java.util.Random().nextFloat() < 0.25f) {
-                        try {
-                            com.example.engines.AppUsageEngine.updateInventory(applicationContext, repository)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error updating app inventory dynamically", e)
+                    // Refresh installed apps inventory & reconcile uninstalled apps
+                    try {
+                        currentInstalledApps = getInstalledAppPairs()
+                        installedPkgSet = currentInstalledApps.map { it.second }.toSet()
+                        com.example.engines.AppUsageEngine.updateInventory(applicationContext, repository)
+
+                        val currentDbApps = repository?.getAllAppConsumptionDirect() ?: emptyList()
+                        val stale = currentDbApps.filter { !installedPkgSet.contains(it.packageName) }
+                        if (stale.isNotEmpty()) {
+                            val valid = currentDbApps.filter { installedPkgSet.contains(it.packageName) }
+                            repository?.clearAppConsumption()
+                            if (valid.isNotEmpty()) {
+                                repository?.saveAppConsumption(valid)
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating app inventory dynamically", e)
                     }
                     
                     // Run Connected Devices Alert Check (v1.7)
@@ -1073,154 +1053,38 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                         Log.e(TAG, "Error checking connected devices alerts in background", e)
                     }
 
-                    // Get current states
-                    val state = liveBatteryState.value
-                    val isDischarging = !state.isCharging
-                    
-                    // Real-time current drain telemetry (mA)
-                    val currentNow = state.currentNow
-                    val currentDrainMA = if (currentNow < 0) {
-                        kotlin.math.abs(currentNow).toFloat()
-                    } else if (isDischarging) {
-                        // Fallback estimate if API doesn't report correct mA
-                        if (isScreenOn) 220f else 18f
-                    } else {
-                        0f
-                    }
-
-                    // Calculate mAh drained during this interval
-                    val intervalMah = (currentDrainMA * intervalSec) / 3600f
-                    
-                    // Pick/update foreground active app if screen is on
-                    if (isScreenOn) {
-                        val now = System.currentTimeMillis()
-                        // Rotate active app every 3 to 6 minutes
-                        if (activeAppPackage == null || now - activeAppChangeTime > (3 + java.util.Random().nextInt(4)) * 60 * 1000L) {
-                            // Select an app other than "System Idle" as active
-                            val candidateApps = finalAppList.filter { it.second != "android" }
-                            if (candidateApps.isNotEmpty()) {
-                                activeAppPackage = candidateApps.random().second
-                                activeAppChangeTime = now
-                            }
-                        }
-                    } else {
-                        activeAppPackage = null
-                    }
-
-                    val updatedList = mutableListOf<com.example.data.AppConsumptionEntity>()
-                    val random = java.util.Random()
-
-                    // Re-fetch current DB values
-                    dbApps = repository?.getAllAppConsumptionDirect()?.associateBy { it.packageName } ?: emptyMap()
-
-                    for (app in finalAppList) {
-                        val existing = dbApps[app.second] ?: com.example.data.AppConsumptionEntity(
-                            packageName = app.second,
-                            appName = app.first
-                        )
-
-                        var addedFg = 0L
-                        var addedBg = 0L
-                        var addedMah = 0f
-                        var isRunning = false
-
-                        if (isDischarging && intervalMah > 0f) {
-                            if (isScreenOn) {
-                                if (app.second == activeAppPackage) {
-                                    addedFg = intervalSec * 1000L
-                                    // Attribute 80% of total screen drain to active foreground app
-                                    addedMah = intervalMah * 0.80f
-                                    isRunning = true
-                                } else if (app.second == "android") {
-                                    addedBg = intervalSec * 1000L
-                                    // System gets 10%
-                                    addedMah = intervalMah * 0.10f
-                                } else {
-                                    addedBg = intervalSec * 1000L
-                                    // Distribute the rest of background use
-                                    val countOtherApps = (finalAppList.size - 2).coerceAtLeast(1)
-                                    addedMah = (intervalMah * 0.10f) / countOtherApps
-                                    // Randomly mark minor background apps as running
-                                    isRunning = random.nextFloat() < 0.15f
-                                }
-                            } else {
-                                // Screen off standby drain
-                                if (app.second == "android") {
-                                    addedBg = intervalSec * 1000L
-                                    addedMah = intervalMah * 0.70f // Standby is mostly system
-                                } else {
-                                    addedBg = intervalSec * 1000L
-                                    val countOtherApps = (finalAppList.size - 1).coerceAtLeast(1)
-                                    addedMah = (intervalMah * 0.30f) / countOtherApps
-                                    isRunning = random.nextFloat() < 0.05f
-                                }
-                            }
-                        } else {
-                            // Device is charging - we add time but no battery drain
-                            if (isScreenOn) {
-                                if (app.second == activeAppPackage) {
-                                    addedFg = intervalSec * 1000L
-                                    isRunning = true
-                                } else {
-                                    addedBg = intervalSec * 1000L
-                                    isRunning = random.nextFloat() < 0.1f
-                                }
-                            } else {
-                                addedBg = intervalSec * 1000L
-                            }
-                        }
-
-                        val newFg = existing.foregroundTimeMs + addedFg
-                        val newBg = existing.backgroundTimeMs + addedBg
-                        val newMah = existing.consumedMah + addedMah
-                        
-                        // Compute realistic hourly drain rate
-                        val totalHrs = ((newFg + newBg) / 3600000f).coerceAtLeast(0.01f)
-                        val newDrainRate = newMah / totalHrs
-
-                        updatedList.add(
-                            existing.copy(
-                                foregroundTimeMs = newFg,
-                                backgroundTimeMs = newBg,
-                                consumedMah = newMah,
-                                estimatedDrainRate = newDrainRate,
-                                isRunning = isRunning,
-                                lastActiveTime = if (isRunning) System.currentTimeMillis() else existing.lastActiveTime
-                            )
-                        )
-                    }
-
-                    // Recalculate usage percentages & ratings
-                    val grandTotalMah = updatedList.sumOf { it.consumedMah.toDouble() }.toFloat().coerceAtLeast(1f)
-                    val finalizedList = updatedList.map { item ->
-                        val pct = (item.consumedMah / grandTotalMah) * 100f
-                        val rating = when {
-                            pct >= 18f -> "Extreme"
-                            pct >= 10f -> "High"
-                            pct >= 4f -> "Medium"
-                            else -> "Low"
-                        }
-                        item.copy(drainRating = rating)
-                    }
-
-                        repository?.saveAppConsumption(finalizedList)
-                        
-                        // Run heavy drain diagnostics
+                    // Query real usage stats if permission granted
+                    val hasUsageStats = com.example.ui.hasUsageStatsPermission(applicationContext)
+                    if (hasUsageStats) {
                         try {
-                            for (app in finalizedList) {
-                                if (app.isRunning) {
-                                    com.example.engines.BatteryAttributionEngine.checkHeavyDrainAndLog(
-                                        context = applicationContext,
-                                        app = app,
-                                        batteryState = state,
-                                        repository = repository,
-                                        currentDrainMA = currentDrainMA
-                                    )
+                            val attrCtx = com.example.util.getAttributionContext(applicationContext)
+                            val usageStatsManager = attrCtx.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
+                            if (usageStatsManager != null) {
+                                val endTime = System.currentTimeMillis()
+                                val startTime = endTime - 24 * 60 * 60 * 1000L
+                                val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+                                val statsMap = stats?.associateBy { it.packageName } ?: emptyMap()
+                                
+                                val dbApps = repository?.getAllAppConsumptionDirect() ?: emptyList()
+                                val updatedList = dbApps.map { item ->
+                                    val stat = statsMap[item.packageName]
+                                    if (stat != null) {
+                                        item.copy(
+                                            foregroundTimeMs = stat.totalTimeInForeground,
+                                            lastActiveTime = stat.lastTimeUsed
+                                        )
+                                    } else {
+                                        item
+                                    }
+                                }
+                                if (updatedList.isNotEmpty()) {
+                                    repository?.saveAppConsumption(updatedList)
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.e(TAG, "Error performing dynamic heavy drain checks", e)
+                            Log.e(TAG, "Error querying real usage stats", e)
                         }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

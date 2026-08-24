@@ -45,7 +45,7 @@ object BatteryAttributionEngine {
 
         // Baseline score calculation based on consumed mAh and foreground/background ratios
         val totalTimeMs = app.foregroundTimeMs + app.backgroundTimeMs
-        val dischargeRatePerHour = if (totalTimeMs > 0) {
+        val dischargeRatePerHour = if (totalTimeMs > 0 && app.consumedMah > 0f) {
             (app.consumedMah / (totalTimeMs / 3600000f))
         } else {
             0f
@@ -69,7 +69,11 @@ object BatteryAttributionEngine {
         // Determine Impact Level & Confidence
         var impactLevel = "LOW"
         var confidence = "LOW CONFIDENCE"
-        var reason = "No significant foreground or background usage registered."
+        var reason = if (app.consumedMah <= 0f) {
+            "No authoritative energy telemetry available from Android security boundaries."
+        } else {
+            "No significant foreground or background usage registered."
+        }
 
         if (app.consumedMah > 0) {
             when {
@@ -111,7 +115,8 @@ object BatteryAttributionEngine {
 
         // Estimated runtime impact
         val estimatedRuntimeImpact = if (status == "ESTIMATED" && dischargeRatePerHour > 0.01f) {
-            val remainingMah: Float = (4000f * batteryState.percentage) / 100f
+            val totalCapacity = 4000f // Fallback standard capacity reference
+            val remainingMah: Float = (totalCapacity * batteryState.percentage) / 100f
             val hoursRemaining: Float = remainingMah / dischargeRatePerHour
             if (hoursRemaining < 100f) {
                 "ESTIMATED: Sole utilization would exhaust charge in ${String.format(java.util.Locale.US, "%.1f", hoursRemaining)} hours."
@@ -119,7 +124,7 @@ object BatteryAttributionEngine {
                 "ESTIMATED: Minimal runtime impact within standard discharge profile."
             }
         } else {
-            "Insufficient data for runtime estimation"
+            "UNAVAILABLE"
         }
 
         return BatteryImpactDetails(
