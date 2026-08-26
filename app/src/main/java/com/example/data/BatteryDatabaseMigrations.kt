@@ -81,6 +81,28 @@ object BatteryDatabaseMigrations {
             }
         }
 
+        // Ensure app_consumption has all network and telemetry columns
+        val appConsumptionCols = listOf(
+            "uid INTEGER NOT NULL DEFAULT 0",
+            "mobileRxBytes INTEGER NOT NULL DEFAULT 0",
+            "mobileTxBytes INTEGER NOT NULL DEFAULT 0",
+            "wifiRxBytes INTEGER NOT NULL DEFAULT 0",
+            "wifiTxBytes INTEGER NOT NULL DEFAULT 0",
+            "totalRxBytes INTEGER NOT NULL DEFAULT 0",
+            "totalTxBytes INTEGER NOT NULL DEFAULT 0",
+            "totalNetworkBytes INTEGER NOT NULL DEFAULT 0",
+            "networkStatsAvailable INTEGER NOT NULL DEFAULT 0",
+            "batteryAttributionAvailable INTEGER NOT NULL DEFAULT 0",
+            "activityState TEXT NOT NULL DEFAULT 'Inactive'"
+        )
+        for (col in appConsumptionCols) {
+            try {
+                database.execSQL("ALTER TABLE app_consumption ADD COLUMN $col")
+            } catch (e: Exception) {
+                // Column already exists, safe to ignore
+            }
+        }
+
         // Ensure app_version_table exists
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS `app_version_table` (`id` INTEGER NOT NULL, `versionCode` INTEGER NOT NULL, `versionName` TEXT NOT NULL, `lastUpdatedTimestamp` INTEGER NOT NULL, `changeDescription` TEXT NOT NULL, PRIMARY KEY(`id`))"
@@ -136,6 +158,12 @@ object BatteryDatabaseMigrations {
     }
 
     val MIGRATION_37_38 = object : Migration(37, 38) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
+        }
+    }
+
+    val MIGRATION_38_39 = object : Migration(38, 39) {
         override fun migrate(database: SupportSQLiteDatabase) {
             executeFullUpgrade(database)
         }

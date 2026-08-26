@@ -527,10 +527,11 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         }
         stickyIntent?.let { processBatteryUpdate(it) }
         try {
+            com.example.engines.thermal.ThermalProtectionEngine.initialize(applicationContext)
             com.example.engines.AppUsageEngine.initialize(applicationContext, repository)
             startAppConsumptionTracker()
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting AppConsumptionTracker", e)
+            Log.e(TAG, "Error starting AppConsumptionTracker / ThermalEngine", e)
         }
     }
 
@@ -918,67 +919,8 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
 
     private fun startAppConsumptionTracker() {
         serviceScope.launch(Dispatchers.IO) {
-            val pm = packageManager
-
-            // Authoritative discovery of currently installed applications
-            fun getInstalledAppPairs(): List<Pair<String, String>> {
-                val list = mutableListOf<Pair<String, String>>()
-                try {
-                    val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                    for (appInfo in installedApps) {
-                        val pkgName = appInfo.packageName
-                        if (pkgName != packageName) { // Exclude ourselves
-                            val label = pm.getApplicationLabel(appInfo).toString()
-                            list.add(Pair(label, pkgName))
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error querying installed applications", e)
-                }
-                return list
-            }
-
-            var currentInstalledApps = getInstalledAppPairs()
-            var installedPkgSet = currentInstalledApps.map { it.second }.toSet()
-
-            // Database reconciliation: Purge uninstalled or stale apps from database
-            try {
-                val dbApps = repository?.getAllAppConsumptionDirect() ?: emptyList()
-                val staleApps = dbApps.filter { !installedPkgSet.contains(it.packageName) }
-                if (staleApps.isNotEmpty()) {
-                    Log.i(TAG, "Purging ${staleApps.size} stale/uninstalled apps from app_consumption database")
-                    val validDbApps = dbApps.filter { installedPkgSet.contains(it.packageName) }
-                    repository?.clearAppConsumption()
-                    if (validDbApps.isNotEmpty()) {
-                        repository?.saveAppConsumption(validDbApps)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error reconciling app consumption database", e)
-            }
-
-            // Sync installed apps into inventory and database without inventing fake telemetry
-            try {
-                val existingDbMap = repository?.getAllAppConsumptionDirect()?.associateBy { it.packageName } ?: emptyMap()
-                val syncList = currentInstalledApps.map { (label, pkg) ->
-                    existingDbMap[pkg] ?: com.example.data.AppConsumptionEntity(
-                        packageName = pkg,
-                        appName = label,
-                        foregroundTimeMs = 0L,
-                        backgroundTimeMs = 0L,
-                        consumedMah = 0f,
-                        estimatedDrainRate = 0f,
-                        drainRating = "UNAVAILABLE",
-                        isRunning = false,
-                        lastActiveTime = 0L
-                    )
-                }
-                if (syncList.isNotEmpty()) {
-                    repository?.saveAppConsumption(syncList)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing installed apps in database", e)
-            }
+            // Initial sync
+            com.example.engines.AppUsageEngine.syncAppConsumption(applicationContext, repository)
 
             // Periodic monitoring loop (runs every 15 seconds)
             val intervalSec = 15L
@@ -1008,7 +950,14 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                                     estimatedDrainRate = 0f,
                                     drainRating = "UNAVAILABLE",
                                     isRunning = false,
-                                    lastActiveTime = 0L
+                                    lastActiveTime = 0L,
+                                    mobileRxBytes = 0L,
+                                    mobileTxBytes = 0L,
+                                    wifiRxBytes = 0L,
+                                    wifiTxBytes = 0L,
+                                    totalRxBytes = 0L,
+                                    totalTxBytes = 0L,
+                                    totalNetworkBytes = 0L
                                 )
                             } ?: emptyList()
                             if (resetList.isNotEmpty()) {
@@ -1026,21 +975,10 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                         }
                     }
 
-                    // Refresh installed apps inventory & reconcile uninstalled apps
+                    // Refresh installed apps inventory & sync real stats
                     try {
-                        currentInstalledApps = getInstalledAppPairs()
-                        installedPkgSet = currentInstalledApps.map { it.second }.toSet()
                         com.example.engines.AppUsageEngine.updateInventory(applicationContext, repository)
-
-                        val currentDbApps = repository?.getAllAppConsumptionDirect() ?: emptyList()
-                        val stale = currentDbApps.filter { !installedPkgSet.contains(it.packageName) }
-                        if (stale.isNotEmpty()) {
-                            val valid = currentDbApps.filter { installedPkgSet.contains(it.packageName) }
-                            repository?.clearAppConsumption()
-                            if (valid.isNotEmpty()) {
-                                repository?.saveAppConsumption(valid)
-                            }
-                        }
+                        com.example.engines.AppUsageEngine.syncAppConsumption(applicationContext, repository)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error updating app inventory dynamically", e)
                     }
@@ -1051,39 +989,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                         com.example.devices.NetraDeviceManager.checkLowBatteryAlerts(applicationContext, currentSettings.connectedDevicesLowBatteryThreshold)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error checking connected devices alerts in background", e)
-                    }
-
-                    // Query real usage stats if permission granted
-                    val hasUsageStats = com.example.ui.hasUsageStatsPermission(applicationContext)
-                    if (hasUsageStats) {
-                        try {
-                            val attrCtx = com.example.util.getAttributionContext(applicationContext)
-                            val usageStatsManager = attrCtx.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
-                            if (usageStatsManager != null) {
-                                val endTime = System.currentTimeMillis()
-                                val startTime = endTime - 24 * 60 * 60 * 1000L
-                                val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-                                val statsMap = stats?.associateBy { it.packageName } ?: emptyMap()
-                                
-                                val dbApps = repository?.getAllAppConsumptionDirect() ?: emptyList()
-                                val updatedList = dbApps.map { item ->
-                                    val stat = statsMap[item.packageName]
-                                    if (stat != null) {
-                                        item.copy(
-                                            foregroundTimeMs = stat.totalTimeInForeground,
-                                            lastActiveTime = stat.lastTimeUsed
-                                        )
-                                    } else {
-                                        item
-                                    }
-                                }
-                                if (updatedList.isNotEmpty()) {
-                                    repository?.saveAppConsumption(updatedList)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error querying real usage stats", e)
-                        }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -1234,20 +1139,31 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     private fun checkThermalStateMachine(temperature: Float) {
         if (temperature == -999f) return
 
-        // 1. Silent Thermal Control (40°C threshold, 38°C hysteresis)
-        if (temperature >= 40.0f) {
-            if (!isSilentThermalControlActive) {
-                executeSilentThermalControl(temperature)
-            }
-        } else if (temperature < 38.0f) {
-            if (isSilentThermalControlActive) {
-                restoreFromSilentThermal()
-            }
+        val thermalState = com.example.engines.thermal.ThermalProtectionEngine.processTemperature(
+            temperature = temperature,
+            context = applicationContext,
+            settings = currentSettings
+        )
+        val isProtected = com.example.engines.thermal.ThermalProtectionEngine.isProtectionActive()
+        isSilentThermalControlActive = isProtected
+        isCriticalThermalEpisodeActive = isProtected
+
+        liveBatteryState.update { 
+            it.copy(
+                isCriticalThermalEpisodeActive = isProtected,
+                thermalStateName = when (thermalState) {
+                    com.example.engines.thermal.ThermalSessionState.PROTECTED -> "Thermal Protection Active (>=${currentSettings.tempAlertThreshold.toInt()}°C)"
+                    com.example.engines.thermal.ThermalSessionState.PROTECTION_ENTERING -> "Engaging Protection"
+                    com.example.engines.thermal.ThermalSessionState.RESTORING, com.example.engines.thermal.ThermalSessionState.RECOVERY_PENDING -> "Restoring State (<=40°C)"
+                    com.example.engines.thermal.ThermalSessionState.NORMAL -> "Normal (<40°C)"
+                },
+                isHeatProtocolActive = isProtected
+            ) 
         }
 
-        // 2. Critical Thermal Voice Warning (45°C threshold, 43°C hysteresis)
-        if (temperature >= 45.0f) {
-            if (!isCriticalThermalVoiceAnnounced) {
+        // Voice warning only if user has criticalTempEnabled in settings
+        if (temperature >= currentSettings.tempAlertThreshold) {
+            if (!isCriticalThermalVoiceAnnounced && currentSettings.criticalTempEnabled) {
                 executeCriticalThermalVoiceWarning(temperature)
             }
         } else if (temperature < 43.0f) {

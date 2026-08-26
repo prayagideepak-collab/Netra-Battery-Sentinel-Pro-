@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.content.Intent
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -14,6 +16,7 @@ import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,18 +26,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import com.example.util.TimeManager
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.AppConsumptionEntity
-import com.example.viewmodel.BatteryViewModel
-import java.util.*
 import androidx.compose.ui.window.Dialog
-import java.text.SimpleDateFormat
+import com.example.data.AppConsumptionEntity
+import com.example.data.BatteryEvent
+import com.example.engines.AppNetworkUsageEngine
 import com.example.engines.BatteryAttributionEngine
 import com.example.service.BatteryState
-import com.example.data.BatteryEvent
+import com.example.util.TimeManager
+import com.example.viewmodel.BatteryViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
  * Netra App Consumption Tracker Screen Component
@@ -52,17 +57,24 @@ fun AppConsumptionTrackerScreen(
     val batteryState by viewModel.batteryState.collectAsStateWithLifecycle()
     val events by viewModel.allBatteryEvents.collectAsStateWithLifecycle(emptyList())
 
-    val activeAppsCount = remember(apps) { apps.count { it.isRunning } }
+    val hasUsagePermission = remember(apps) { hasUsageStatsPermission(context) }
+    val activeAppsCount = remember(apps) { apps.count { it.isRunning || it.activityState == "Running" } }
     val totalEstimatedDrain = remember(apps) { apps.sumOf { it.consumedMah.toDouble() }.toFloat() }
-    var filterType by remember { mutableStateOf("All") } // "All", "High", "Running"
+    val totalNetworkBytes = remember(apps) { apps.sumOf { it.totalNetworkBytes } }
+    
+    var filterType by remember { mutableStateOf("All") } // "All", "Running", "Active Today"
     var selectedApp by remember { mutableStateOf<AppConsumptionEntity?>(null) }
 
     val filteredApps = remember(apps, filterType) {
         when (filterType) {
-            "Running" -> apps.filter { it.isRunning }
-            "High" -> apps.filter { it.drainRating == "Extreme" || it.drainRating == "High" }
+            "Running" -> apps.filter { it.isRunning || it.activityState == "Running" }
+            "Active Today" -> apps.filter { it.foregroundTimeMs > 0L || it.totalNetworkBytes > 0L }
             else -> apps
-        }.sortedByDescending { it.consumedMah }
+        }.sortedWith(
+            compareByDescending<AppConsumptionEntity> { it.isRunning }
+                .thenByDescending { it.totalNetworkBytes }
+                .thenByDescending { it.foregroundTimeMs }
+        )
     }
 
     // Detail Dialog Overlay
@@ -120,8 +132,8 @@ fun AppConsumptionTrackerScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Real device telemetry with validated app attribution when available.",
-                            fontSize = 11.5.sp,
+                            text = "Authoritative telemetry from PackageManager & NetworkStatsManager. Zero fabrication.",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -129,30 +141,124 @@ fun AppConsumptionTrackerScreen(
             }
         }
 
-        // Stats summary row
+        // Usage Access Permission Banner if not granted
+        if (!hasUsagePermission) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Security, contentDescription = "Security", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Usage Access Required",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Usage Access is required to read authoritative per-app network bytes and foreground durations from Android NetworkStatsManager.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 15.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Open Settings -> Apps -> Special app access -> Usage access", Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Grant Usage Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Deterministic Time Window Indicator & Stats Summary Card
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
             ) {
-                Column {
-                    Text("Aggregated App Drain", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val drainText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "UNAVAILABLE" else "${String.format(Locale.US, "%.1f", totalEstimatedDrain)} mAh"
-                    Text(text = drainText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Active Apps", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val runningText = if (apps.isEmpty()) "UNAVAILABLE" else if (activeAppsCount == 0) "STATUS UNAVAILABLE" else "$activeAppsCount running"
-                    Text(text = runningText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Attribution Engine", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    val engineText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "NO VALID TELEMETRY" else "NTA Validated Active"
-                    Text(text = engineText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Telemetry Window: Today (00:00 - Now)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Apps: ${apps.size}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Aggregated App Drain", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val drainText = if (apps.isEmpty() || totalEstimatedDrain <= 0f) "Unavailable" else "${String.format(Locale.US, "%.1f", totalEstimatedDrain)} mAh"
+                            Text(
+                                text = drainText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (apps.isEmpty() || totalEstimatedDrain <= 0f) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Aggregated Network", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val netText = if (!hasUsagePermission || apps.isEmpty()) "Unavailable" else AppNetworkUsageEngine.formatBytes(totalNetworkBytes)
+                            Text(
+                                text = netText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Active Apps", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            val runningText = if (apps.isEmpty()) "Unavailable" else "$activeAppsCount running"
+                            Text(
+                                text = runningText,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeAppsCount > 0) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -174,12 +280,12 @@ fun AppConsumptionTrackerScreen(
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
 
-                    // Filters tabs (All, High Drain, Running)
+                    // Filters tabs (All, Running, Active Today)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("All", "High", "Running").forEach { tag ->
+                        listOf("All", "Running", "Active Today").forEach { tag ->
                             val active = filterType == tag
                             Card(
                                 onClick = { filterType = tag },
@@ -222,7 +328,7 @@ fun AppConsumptionTrackerScreen(
             }
         }
 
-        // List Header
+        // List Header with count
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -238,7 +344,7 @@ fun AppConsumptionTrackerScreen(
 
                 IconButton(
                     onClick = {
-                        Toast.makeText(context, "Recalibrating app battery coefficients...", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Refreshing installed apps and network metrics...", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.size(24.dp)
                 ) {
@@ -251,27 +357,33 @@ fun AppConsumptionTrackerScreen(
         if (apps.isEmpty()) {
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Info, "Warning", tint = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "NO VALID DATA AVAILABLE",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Filled.Info, "Information", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Standard Android security boundaries restrict user-installed apps from reading other applications' direct energy consumption. If background collection has not started or permission is missing, process metrics will show as unavailable.",
+                            text = "No Eligible Applications Found",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Netra queries only real installed applications from PackageManager. If background synchronization has just started, installed applications will appear shortly.",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
                             lineHeight = 15.sp
                         )
                     }
@@ -286,14 +398,14 @@ fun AppConsumptionTrackerScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No apps match current filter bounds.",
+                        text = "No apps match current filter criteria.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
         } else {
-            items(filteredApps) { app ->
+            items(filteredApps, key = { it.packageName }) { app ->
                 AppConsumptionItem(app = app, onClick = { selectedApp = app })
             }
         }
@@ -317,119 +429,161 @@ fun AppConsumptionTrackerScreen(
     }
 }
 
+/**
+ * Redesigned Section 13 App Card:
+ * [App Icon]  AppName
+ *             Package: com.example.package (UID: 10042)
+ *
+ * Battery:
+ * Unavailable
+ *
+ * Network:
+ * Mobile 12.4 MB  •  Wi-Fi 84.2 MB  •  Total 96.6 MB
+ *
+ * State:
+ * Background / Running / Inactive
+ */
 @Composable
 fun AppConsumptionItem(app: AppConsumptionEntity, onClick: () -> Unit) {
     val firstChar = app.appName.firstOrNull()?.toString()?.uppercase() ?: "A"
-    val badgeColor = when (app.drainRating) {
-        "Extreme" -> Color(0xFFEF5350)
-        "High" -> Color(0xFFFF9800)
-        "Medium" -> Color(0xFFFFD54F)
-        "Low" -> Color(0xFF4CAF50)
+    val state = when {
+        app.isRunning || app.activityState == "Running" -> "Running"
+        app.activityState == "Background" || app.foregroundTimeMs > 0L -> "Background"
+        else -> "Inactive"
+    }
+
+    val stateColor = when (state) {
+        "Running" -> Color(0xFF4CAF50)
+        "Background" -> Color(0xFF2196F3)
         else -> MaterialTheme.colorScheme.outline
     }
 
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("app_item_${app.packageName}"),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(badgeColor.copy(alpha = 0.12f), CircleShape)
-                    .border(1.dp, badgeColor.copy(alpha = 0.25f), CircleShape),
-                contentAlignment = Alignment.Center
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header Row: Icon + Name + Package + State Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = firstChar,
-                    color = badgeColor,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(stateColor.copy(alpha = 0.12f), CircleShape)
+                        .border(1.dp, stateColor.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = app.appName,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        if (app.isRunning) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF4CAF50).copy(alpha = 0.15f)),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    text = "RUNNING",
-                                    fontSize = 7.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF4CAF50),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    val mahDisplay = if (app.consumedMah > 0f) "${String.format(Locale.US, "%.1f", app.consumedMah)} mAh" else "UNAVAILABLE"
                     Text(
-                        text = mahDisplay,
-                        fontSize = 12.sp,
+                        text = firstChar,
+                        color = stateColor,
                         fontWeight = FontWeight.Bold,
-                        color = if (app.consumedMah > 0f) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline
+                        fontSize = 16.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-                // Progress Bar indicating consumption proportion
-                val maxEst = 350f
-                val ratio = if (app.consumedMah > 0f) (app.consumedMah / maxEst).coerceIn(0f, 1f) else 0f
-                LinearProgressIndicator(
-                    progress = ratio,
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = app.appName,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Package: ${app.packageName}${if (app.uid > 0) " (UID: ${app.uid})" else ""}",
+                        fontSize = 9.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+
+                // State Badge
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = stateColor.copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(0.5.dp, stateColor.copy(alpha = 0.3f))
+                ) {
+                    Text(
+                        text = state.uppercase(),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        color = stateColor,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Battery Attribution Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Battery:",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                val batteryText = if (app.consumedMah > 0f && app.batteryAttributionAvailable) {
+                    "${String.format(Locale.US, "%.1f", app.consumedMah)} mAh"
+                } else {
+                    "Unavailable"
+                }
+                Text(
+                    text = batteryText,
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (app.consumedMah > 0f && app.batteryAttributionAvailable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Real Network Telemetry Row
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "Network:",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.dp)
-                        .clip(CircleShape),
-                    color = badgeColor,
-                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val ratingDisplay = if (app.consumedMah <= 0f || app.drainRating == "UNAVAILABLE") "Rating: UNAVAILABLE" else "Rating: ${app.drainRating}"
-                    Text(
-                        text = ratingDisplay,
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (app.networkStatsAvailable) {
+                        val mobileBytes = app.mobileRxBytes + app.mobileTxBytes
+                        val wifiBytes = app.wifiRxBytes + app.wifiTxBytes
+                        val totalBytes = if (app.totalNetworkBytes > 0L) app.totalNetworkBytes else (mobileBytes + wifiBytes)
 
-                    val bgDisplay = if (app.backgroundTimeMs > 0L) "Background: ${TimeManager.formatDurationMs(app.backgroundTimeMs)}" else "Background: UNAVAILABLE"
-                    Text(
-                        text = bgDisplay,
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                        Text("Mobile: ${AppNetworkUsageEngine.formatBytes(mobileBytes)}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Wi-Fi: ${AppNetworkUsageEngine.formatBytes(wifiBytes)}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Total: ${AppNetworkUsageEngine.formatBytes(totalBytes)}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    } else {
+                        Text(
+                            text = "Data usage unavailable — Usage Access required",
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -460,7 +614,7 @@ fun AppDetailDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
                 .testTag("app_detail_dialog"),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -480,12 +634,12 @@ fun AppDetailDialog(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = app.appName,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = app.packageName,
+                            text = "${app.packageName}${if (app.uid > 0) " • UID: ${app.uid}" else ""}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -495,12 +649,12 @@ fun AppDetailDialog(
                     }
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                Divider(modifier = Modifier.padding(vertical = 10.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
                 // Scrollable Content
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // System vs User App and State
                     item {
@@ -510,26 +664,59 @@ fun AppDetailDialog(
                         ) {
                             Card(
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(modifier = Modifier.padding(10.dp)) {
                                     Text("Application Type", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(correlation.category, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Card(
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                             ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
+                                Column(modifier = Modifier.padding(10.dp)) {
                                     Text("Current State", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    val state = when {
+                                        app.isRunning || app.activityState == "Running" -> "RUNNING (ACTIVE)"
+                                        app.activityState == "Background" -> "BACKGROUND"
+                                        else -> "INACTIVE / IDLE"
+                                    }
                                     Text(
-                                        text = if (app.isRunning) "RUNNING (ACTIVE)" else "IDLE / STOPPED",
+                                        text = state,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = if (app.isRunning) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Network Telemetry Breakdown
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Authoritative Network Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                if (app.networkStatsAvailable) {
+                                    AppDetailRow("Mobile RX / TX", "${AppNetworkUsageEngine.formatBytes(app.mobileRxBytes)} / ${AppNetworkUsageEngine.formatBytes(app.mobileTxBytes)}")
+                                    AppDetailRow("Mobile Total", AppNetworkUsageEngine.formatBytes(app.mobileRxBytes + app.mobileTxBytes))
+                                    AppDetailRow("Wi-Fi RX / TX", "${AppNetworkUsageEngine.formatBytes(app.wifiRxBytes)} / ${AppNetworkUsageEngine.formatBytes(app.wifiTxBytes)}")
+                                    AppDetailRow("Wi-Fi Total", AppNetworkUsageEngine.formatBytes(app.wifiRxBytes + app.wifiTxBytes))
+                                    AppDetailRow("Total Network Usage", AppNetworkUsageEngine.formatBytes(app.totalNetworkBytes))
+                                } else {
+                                    Text(
+                                        text = "Per-app network telemetry is unavailable. Grant Usage Access in Android Settings to enable live NetworkStatsManager tracking.",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -540,16 +727,16 @@ fun AppDetailDialog(
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text("Usage & Activity Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.height(8.dp))
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Usage & Activity Timeline", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.height(6.dp))
                                 
-                                AppDetailRow("Last Active", timeFormatter.format(Date(app.lastActiveTime)))
-                                AppDetailRow("Foreground Runtime", TimeManager.formatDurationMs(app.foregroundTimeMs))
-                                AppDetailRow("Background Runtime", TimeManager.formatDurationMs(app.backgroundTimeMs))
+                                AppDetailRow("Last Active", if (app.lastActiveTime > 0L) timeFormatter.format(Date(app.lastActiveTime)) else "Unavailable")
+                                AppDetailRow("Foreground Runtime", if (app.foregroundTimeMs > 0L) TimeManager.formatDurationMs(app.foregroundTimeMs) else "Unavailable")
+                                AppDetailRow("Background Runtime", if (app.backgroundTimeMs > 0L) TimeManager.formatDurationMs(app.backgroundTimeMs) else "Unavailable")
                             }
                         }
                     }
@@ -558,54 +745,34 @@ fun AppDetailDialog(
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Column(modifier = Modifier.padding(12.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Battery Attribution Engine", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("Battery Attribution", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                     Card(
                                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
                                         shape = RoundedCornerShape(4.dp)
                                     ) {
                                         Text(
-                                            text = correlation.status,
+                                            text = if (app.consumedMah > 0f && app.batteryAttributionAvailable) "ACTIVE" else "UNAVAILABLE",
                                             fontSize = 8.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 
-                                AppDetailRow("Battery Impact", correlation.impactLevel)
-                                AppDetailRow("Calibration Confidence", correlation.confidence)
-                                AppDetailRow("Attribution Reason", correlation.reason)
-                                AppDetailRow("Estimated Runtime Impact", correlation.estimatedRuntimeImpact)
-                            }
-                        }
-                    }
-
-                    // Environment Context & Network Activity
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Text("Environmental & Radio Context", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                AppDetailRow("Network Activity", correlation.networkContext)
-                                AppDetailRow("System Battery", "${batteryState.percentage}% (${if (batteryState.isCharging) "Charging" else "Discharging"})")
-                                AppDetailRow("Thermal State", "${batteryState.temperature}°C (Comfort Index: ${com.example.engines.DeviceIntelligenceEngine.getDeviceComfortIndex(batteryState, LocalContext.current)}/100)")
+                                AppDetailRow("Battery Impact", if (app.consumedMah > 0f) "${app.consumedMah} mAh" else "Unavailable")
+                                AppDetailRow("Attribution Note", "Standard Android SDK does not expose per-UID battery mAh without privileged system permissions.")
                             }
                         }
                     }
@@ -618,7 +785,7 @@ fun AppDetailDialog(
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(bottom = 6.dp)
+                                modifier = Modifier.padding(bottom = 4.dp)
                             )
                             if (matchingEvents.isEmpty()) {
                                 Card(
@@ -627,10 +794,10 @@ fun AppDetailDialog(
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
                                 ) {
                                     Box(
-                                        modifier = Modifier.padding(12.dp),
+                                        modifier = Modifier.padding(10.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text("No historical event logs registered for this app package.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("No historical event logs registered for this app package.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             } else {
@@ -638,20 +805,20 @@ fun AppDetailDialog(
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
-                                        shape = RoundedCornerShape(10.dp),
+                                            .padding(vertical = 3.dp),
+                                        shape = RoundedCornerShape(8.dp),
                                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
                                     ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
-                                                Text(event.title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                Text(event.title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                                 Text(timeFormatter.format(Date(event.timestamp)), fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(event.details, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Spacer(modifier = Modifier.height(1.dp))
+                                            Text(event.details, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
@@ -660,12 +827,12 @@ fun AppDetailDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(10.dp)
                 ) {
                     Text("Close Diagnostics View", fontSize = 12.sp)
                 }
@@ -676,9 +843,9 @@ fun AppDetailDialog(
 
 @Composable
 private fun AppDetailRow(label: String, value: String) {
-    Column(modifier = Modifier.padding(vertical = 4.dp)) {
-        Text(text = label, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(modifier = Modifier.padding(vertical = 3.dp)) {
+        Text(text = label, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(modifier = Modifier.height(1.dp))
-        Text(text = value, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(text = value, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
     }
 }
