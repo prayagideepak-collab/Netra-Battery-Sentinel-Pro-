@@ -239,6 +239,21 @@ fun PrimaryBatteryCard(percentage: Int, status: String) {
     )
     val batteryColor = BatteryColorEngine.getColor(animatedPct)
 
+    // Segmented charging animation progression when connected to power (0..10 segments at ~1s interval)
+    var animationStep by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isCharging, percentage) {
+        if (isCharging && percentage < 100) {
+            val baseSegments = (percentage / 10).coerceIn(0, 10)
+            animationStep = baseSegments
+            while (true) {
+                kotlinx.coroutines.delay(1000L)
+                animationStep = if (animationStep >= 10) baseSegments else animationStep + 1
+            }
+        } else {
+            animationStep = (percentage / 10).coerceIn(0, 10)
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -253,7 +268,7 @@ fun PrimaryBatteryCard(percentage: Int, status: String) {
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Visual Battery Indicator Graphic
+            // Visual Battery Indicator Graphic (10 visual segments)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
@@ -261,28 +276,33 @@ fun PrimaryBatteryCard(percentage: Int, status: String) {
             ) {
                 Box(
                     modifier = Modifier
-                        .width(72.dp)
-                        .height(36.dp)
+                        .width(88.dp)
+                        .height(38.dp)
                         .border(2.dp, MaterialTheme.colorScheme.onSurfaceVariant, RoundedCornerShape(8.dp))
                         .padding(3.dp)
                 ) {
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        // Active charged portion
-                        val activeWeight = animatedPct.coerceIn(0.1f, 100f)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .weight(activeWeight)
-                                .background(batteryColor, RoundedCornerShape(4.dp))
-                        )
-                        // Dark / Discharged portion
-                        val dischargedWeight = (100f - animatedPct).coerceAtLeast(0.1f)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .weight(dischargedWeight)
-                                .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(4.dp))
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val activeSegments = if (isCharging && percentage < 100) animationStep else (percentage / 10).coerceIn(0, 10)
+                        for (i in 1..10) {
+                            val isSegmentFilled = i <= activeSegments
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .weight(1f)
+                                    .background(
+                                        color = if (isSegmentFilled) {
+                                            if (isCharging) Color(0xFF00E676) else batteryColor
+                                        } else {
+                                            Color.Black.copy(alpha = 0.5f)
+                                        },
+                                        shape = RoundedCornerShape(2.dp)
+                                    )
+                            )
+                        }
                     }
                 }
                 // Positive terminal nub
