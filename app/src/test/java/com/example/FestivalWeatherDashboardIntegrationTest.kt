@@ -82,7 +82,7 @@ class FestivalWeatherDashboardIntegrationTest {
     }
 
     @Test
-    fun testEnvironmentalContextEngineDatasetUpdate() = runTest {
+    fun testEnvironmentalContextEngineDatasetUpdate() {
         EnvironmentalContextEngine.updateWithWeatherReport(context, "Prayagraj", 32.0f, "Clear", "India")
         val dataset = EnvironmentalContextEngine.datasetFlow.value
         assertEquals("Prayagraj", dataset.cityName)
