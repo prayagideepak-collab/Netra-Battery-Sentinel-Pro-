@@ -117,8 +117,8 @@ class BatteryApplication : Application() {
                     val dao = database?.batteryDao()
                     if (dao != null) {
                         val existingVersion = dao.getAppVersionDirect()
-                        val newVersionCode = (existingVersion?.versionCode?.coerceAtLeast(305) ?: 305) + 1
-                        val newVersionName = "3.2.0-sql-build-$newVersionCode"
+                        val newVersionCode = (existingVersion?.versionCode?.coerceAtLeast(306) ?: 306) + 1
+                        val newVersionName = "3.3.0-sql-build-$newVersionCode"
                         dao.insertAppVersion(
                             com.example.data.AppVersionEntity(
                                 id = 1,
