@@ -110,10 +110,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private class AdaptiveLocManager {
-        fun stop() {}
-    }
-    private var adaptiveLocationManager: AdaptiveLocManager? = AdaptiveLocManager()
+    private var adaptiveLocationManager: AdaptiveLocationBatterySaver? = null
     private var tts: TextToSpeech? = null
     private var isTtsInitialized = false
     private var ttsQueue = LinkedList<String>()
@@ -453,6 +450,24 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             SystemSelfAuditEngine.startPeriodicAudit(applicationContext, serviceScope)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start periodic self-audit", e)
+        }
+
+        // Initialize Adaptive Location Battery Saver (5-Minute Duty-Cycled Sampling)
+        try {
+            adaptiveLocationManager = AdaptiveLocationBatterySaver(
+                context = applicationContext,
+                scope = serviceScope,
+                onLocationUpdated = { loc ->
+                    liveBatteryState.update { current ->
+                        current.copy(
+                            locationStatus = "Active (${String.format(java.util.Locale.US, "%.2f", loc.latitude)}, ${String.format(java.util.Locale.US, "%.2f", loc.longitude)})"
+                        )
+                    }
+                }
+            )
+            adaptiveLocationManager?.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start AdaptiveLocationBatterySaver", e)
         }
 
         // Initialize Settings

@@ -1153,6 +1153,110 @@ fun MonitoringIntelligenceCategoryView(
             )
         }
 
+        // Dedicated Periodic GPS/Location Battery Saver Section
+        val context = LocalContext.current
+        val locationSaverPrefs = remember {
+            context.getSharedPreferences("netra_gps_battery_saver_prefs", android.content.Context.MODE_PRIVATE)
+        }
+        var isGpsSaverEnabled by remember {
+            mutableStateOf(locationSaverPrefs.getBoolean("periodic_location_enabled", true))
+        }
+        var samplingInterval by remember {
+            mutableIntStateOf(locationSaverPrefs.getInt("sampling_interval_minutes", 5))
+        }
+        var samplingWindow by remember {
+            mutableIntStateOf(locationSaverPrefs.getInt("acquisition_window_seconds", 5))
+        }
+
+        SettingsSection(title = "Periodic GPS/Location Battery Saver") {
+            SettingItem(
+                icon = Icons.Filled.LocationOn,
+                iconColor = Color(0xFF00E676),
+                title = "Periodic GPS Battery Saver",
+                subtitle = "Duty-cycle GPS hardware (~5s sample window) to prevent continuous battery drain",
+                isToggle = true,
+                toggleState = isGpsSaverEnabled,
+                capabilityBadge = "Duty-Cycled",
+                onToggle = { enabled ->
+                    isGpsSaverEnabled = enabled
+                    locationSaverPrefs.edit().putBoolean("periodic_location_enabled", enabled).apply()
+                }
+            )
+
+            if (isGpsSaverEnabled) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(
+                        text = "SAMPLING INTERVAL",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val intervals = listOf(2, 5, 10, 15)
+                        items(intervals) { minutes ->
+                            val isSelected = samplingInterval == minutes
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    samplingInterval = minutes
+                                    locationSaverPrefs.edit().putInt("sampling_interval_minutes", minutes).apply()
+                                },
+                                label = { Text("$minutes min", fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "ACQUISITION DURATION (WINDOW)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val windows = listOf(3, 5, 10)
+                        items(windows) { seconds ->
+                            val isSelected = samplingWindow == seconds
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    samplingWindow = seconds
+                                    locationSaverPrefs.edit().putInt("acquisition_window_seconds", seconds).apply()
+                                },
+                                label = { Text("$seconds sec", fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Default: 5 min interval, 5 sec window. GPS radio is briefly activated for a fix and immediately powered down.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+
         IadreAiDashboardCard()
         DeviceOptimizationDashboardCard()
         AnalyticsDashboardCard()
