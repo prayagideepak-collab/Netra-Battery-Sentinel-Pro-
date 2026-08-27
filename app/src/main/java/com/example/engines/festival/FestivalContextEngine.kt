@@ -88,25 +88,16 @@ object FestivalContextEngine {
         evaluateTodayFestival()
     }
 
-    fun evaluateTodayFestival(): FestivalRecord {
+    fun evaluateTodayFestival(): FestivalRecord? {
         val calendar = Calendar.getInstance()
         val monthDayFormat = SimpleDateFormat("MM-dd", Locale.US)
         val todayMonthDay = monthDayFormat.format(calendar.time)
 
         val match = verifiedFestivalDatabase.find { it.date == todayMonthDay }
-            ?: when (calendar.get(Calendar.MONTH)) {
-                Calendar.AUGUST -> verifiedFestivalDatabase.find { it.festivalId == "independence_day" }!!
-                Calendar.OCTOBER, Calendar.NOVEMBER -> verifiedFestivalDatabase.find { it.festivalId == "diwali" }!!
-                Calendar.MARCH -> verifiedFestivalDatabase.find { it.festivalId == "holi" }!!
-                Calendar.DECEMBER -> verifiedFestivalDatabase.find { it.festivalId == "christmas" }!!
-                Calendar.JANUARY -> verifiedFestivalDatabase.find { it.festivalId == "makar_sankranti" }!!
-                Calendar.SEPTEMBER -> verifiedFestivalDatabase.find { it.festivalId == "ganesh_utsav" }!!
-                else -> verifiedFestivalDatabase.find { it.festivalId == "diwali" }!!
-            }
 
         _currentFestival.value = match
-        _activeFestivals.value = listOf(match)
-        _engineState.value = FestivalEngineState.THEME_RESULT_READY
+        _activeFestivals.value = if (match != null) listOf(match) else emptyList()
+        _engineState.value = if (match != null) FestivalEngineState.THEME_RESULT_READY else FestivalEngineState.NO_FESTIVAL
         return match
     }
 

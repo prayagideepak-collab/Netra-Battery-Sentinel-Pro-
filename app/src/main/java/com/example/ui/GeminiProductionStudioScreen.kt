@@ -170,13 +170,13 @@ fun FestivalThemeSubScreen(viewModel: BatteryViewModel) {
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        currentFestival?.festivalName ?: "Independence Day Celebration",
+                        currentFestival?.festivalName ?: "No Active Festival",
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 20.sp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Text(
-                        currentFestival?.description ?: "National freedom celebration with vibrant themes",
+                        currentFestival?.description ?: "No active festival detected for current date or location",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )

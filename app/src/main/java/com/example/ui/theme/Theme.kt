@@ -533,7 +533,7 @@ fun MyApplicationTheme(
     val colorScheme = when {
         isOverheated -> if (darkTheme) LowBatteryDarkColorScheme else LowBatteryLightColorScheme
         isLowBattery -> if (darkTheme) LowBatteryDarkColorScheme else LowBatteryLightColorScheme
-        else -> resolveThemeColorScheme(themeMode = themeMode, darkTheme = darkTheme, batteryLevel = batteryLevel)
+        else -> GlobalThemeCoordinator.resolveAuthoritativeTheme(themeMode = themeMode, darkTheme = darkTheme, batteryLevel = batteryLevel)
     }
 
     MaterialTheme(

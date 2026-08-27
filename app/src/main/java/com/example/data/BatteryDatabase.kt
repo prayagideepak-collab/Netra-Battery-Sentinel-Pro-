@@ -25,7 +25,7 @@ import androidx.room.RoomDatabase
         BatteryHistoryEntity::class,
         AppVersionEntity::class
     ],
-    version = 39,
+    version = 41,
     exportSchema = false
 )
 abstract class BatteryDatabase : RoomDatabase() {
@@ -53,7 +53,9 @@ abstract class BatteryDatabase : RoomDatabase() {
                     BatteryDatabaseMigrations.MIGRATION_35_37,
                     BatteryDatabaseMigrations.MIGRATION_36_37,
                     BatteryDatabaseMigrations.MIGRATION_37_38,
-                    BatteryDatabaseMigrations.MIGRATION_38_39
+                    BatteryDatabaseMigrations.MIGRATION_38_39,
+                    BatteryDatabaseMigrations.MIGRATION_39_40,
+                    BatteryDatabaseMigrations.MIGRATION_40_41
                 )
                 .build()
                 INSTANCE = instance

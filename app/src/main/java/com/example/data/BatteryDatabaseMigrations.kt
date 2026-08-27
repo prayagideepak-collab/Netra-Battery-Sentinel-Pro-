@@ -168,5 +168,17 @@ object BatteryDatabaseMigrations {
             executeFullUpgrade(database)
         }
     }
+
+    val MIGRATION_39_40 = object : Migration(39, 40) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
+        }
+    }
+
+    val MIGRATION_40_41 = object : Migration(40, 41) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
+        }
+    }
 }
 
