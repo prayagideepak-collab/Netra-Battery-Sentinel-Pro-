@@ -1,7 +1,7 @@
 # Netra Battery Sentinel Pro — Custom System Instructions & Governance
 
 - **MANUAL REFRESH IS PERMANENT**:
-  The application's Manual Refresh control is a mandatory permanent feature. It exists only to request fresh real application data and synchronize all applicable data sources (location, weather, battery state, charging state, application telemetry, connected-device data, and registered modules). It must remain available in every future application version and every user session. It must never be removed, disabled, hidden, or repurposed as a configuration or theme-control mechanism. Future modules may register their data synchronization operation with the `GlobalDataRefreshCoordinator`, but no future feature may remove the Manual Refresh capability.
+  The application's Manual Refresh control is a mandatory permanent feature. It exists only to request fresh real application data and synchronize all applicable data sources (location, weather, battery state, charging state, application telemetry, connected-device data, and registered modules via `UniversalSyncCoordinator`). It must remain available in every future application version and every user session. It must never be removed, disabled, hidden, or repurposed as a configuration or theme-control mechanism. Future modules must register their data synchronization operation with `UniversalSyncCoordinator`, ensuring centralized, non-competing synchronization.
 - **ZERO FAKE WEATHER & LOCATION DATA**:
   Absolute truth-first architecture. Never fabricate weather, temperature, humidity, wind, forecasts, or city names. If real data is unavailable, display honest unavailable states ("Weather unavailable", "Location unavailable").
 - **AUTHORITATIVE THEME PRIORITY**:

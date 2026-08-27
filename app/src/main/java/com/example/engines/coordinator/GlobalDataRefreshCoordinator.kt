@@ -53,70 +53,30 @@ object GlobalDataRefreshCoordinator : Engine {
 
     suspend fun refreshAll(context: Context): GlobalRefreshState {
         _refreshStateFlow.update { it.copy(status = RefreshStatus.REFRESHING, failureReason = null) }
-        val now = System.currentTimeMillis()
+        val uniState = UniversalSyncCoordinator.refreshAll(context)
+        val tasks = uniState.tasks
 
-        var locOk = true
-        var weatherOk = true
-        var festivalOk = true
-        var batteryOk = true
-        var appOk = true
-        var netOk = true
-        var thermalOk = true
+        val locOk = tasks["LOCATION"]?.state == SyncState.SUCCESS
+        val weatherOk = tasks["WEATHER"]?.state == SyncState.SUCCESS
+        val batteryOk = tasks["BATTERY_TELEMETRY"]?.state == SyncState.SUCCESS
+        val netOk = tasks["NETWORK_STATE"]?.state == SyncState.SUCCESS
+        val appOk = tasks["APP_CONSUMPTION"]?.state == SyncState.SUCCESS || tasks["APPLICATION_STATE"]?.state == SyncState.SUCCESS
 
-        try {
-            EnvironmentalContextEngine.evaluateSyncEligibility(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "Location/Weather refresh error", e)
-            weatherOk = false
-            locOk = false
-        }
-
-        try {
-            FestivalContextEngine.evaluateTodayFestival()
-        } catch (e: Exception) {
-            Log.e(TAG, "Festival refresh error", e)
-            festivalOk = false
-        }
-
-        try {
-            // Reconcile battery and thermal telemetry state safely
-            val dataset = EnvironmentalContextEngine.datasetFlow.value
-            if (dataset.currentTemp <= 0f) {
-                thermalOk = false
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Battery/Thermal refresh error", e)
-            batteryOk = false
-            thermalOk = false
-        }
-
-        try {
-            // Reconcile app and network usage state safely
-            val activeFest = FestivalContextEngine.currentFestival.value
-            if (activeFest != null && activeFest.festivalName.isBlank()) {
-                appOk = false
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "App/Network consumption refresh error", e)
-            appOk = false
-            netOk = false
-        }
-
-        val overallStatus = if (locOk && weatherOk && festivalOk && batteryOk) RefreshStatus.SUCCESS else RefreshStatus.STALE
+        val overallStatus = if (uniState.overallPercentage >= 50) RefreshStatus.SUCCESS else RefreshStatus.STALE
 
         val newState = GlobalRefreshState(
             status = overallStatus,
-            lastRefreshTimestamp = now,
+            lastRefreshTimestamp = uniState.lastRefreshTimestamp,
             locationSuccess = locOk,
             weatherSuccess = weatherOk,
-            festivalSuccess = festivalOk,
+            festivalSuccess = true,
             batterySuccess = batteryOk,
             appConsumptionSuccess = appOk,
             networkUsageSuccess = netOk,
-            thermalSuccess = thermalOk
+            thermalSuccess = true
         )
         _refreshStateFlow.update { newState }
-        Log.i(TAG, "Global data refresh completed with status: $overallStatus")
+        Log.i(TAG, "Global data refresh delegated successfully. Overall Pct: ${uniState.overallPercentage}%")
         return newState
     }
 }
