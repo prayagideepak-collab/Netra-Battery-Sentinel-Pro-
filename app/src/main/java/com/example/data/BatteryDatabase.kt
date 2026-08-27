@@ -23,15 +23,17 @@ import androidx.room.RoomDatabase
         RootCauseEntity::class,
         ResourceOptimizerEntity::class,
         BatteryHistoryEntity::class,
-        AppVersionEntity::class
+        AppVersionEntity::class,
+        SyncTaskEntity::class
     ],
-    version = 42,
+    version = 43,
     exportSchema = false
 )
 abstract class BatteryDatabase : RoomDatabase() {
     abstract fun batteryDao(): BatteryDao
     abstract fun deviceDao(): com.example.devices.DeviceDao
     abstract fun batteryHistoryDao(): BatteryHistoryDao
+    abstract fun syncTaskDao(): SyncTaskDao
 
     companion object {
         @Volatile
@@ -56,7 +58,8 @@ abstract class BatteryDatabase : RoomDatabase() {
                     BatteryDatabaseMigrations.MIGRATION_38_39,
                     BatteryDatabaseMigrations.MIGRATION_39_40,
                     BatteryDatabaseMigrations.MIGRATION_40_41,
-                    BatteryDatabaseMigrations.MIGRATION_41_42
+                    BatteryDatabaseMigrations.MIGRATION_41_42,
+                    BatteryDatabaseMigrations.MIGRATION_42_43
                 )
                 .build()
                 INSTANCE = instance

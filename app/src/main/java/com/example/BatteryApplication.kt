@@ -109,6 +109,7 @@ class BatteryApplication : Application() {
             com.example.engines.coordinator.EngineCoordinator.registerEngine(com.example.engines.ibce.IntelligentBatteryControlEngine)
             com.example.engines.coordinator.EngineCoordinator.registerEngine(com.example.engines.charging.ChargingIntelligenceEngine)
             com.example.engines.coordinator.EngineCoordinator.registerEngine(com.example.engines.ieee.IntelligentExportEvidenceEngine)
+            com.example.engines.coordinator.EngineCoordinator.registerEngine(com.example.engines.coordinator.UniversalSyncCoordinator)
             com.example.engines.coordinator.EngineCoordinator.initializeAll(this)
 
             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()).launch {

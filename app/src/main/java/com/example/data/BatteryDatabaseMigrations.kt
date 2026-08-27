@@ -186,5 +186,14 @@ object BatteryDatabaseMigrations {
             executeFullUpgrade(database)
         }
     }
+
+    val MIGRATION_42_43 = object : Migration(42, 43) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `sync_tasks` (`taskId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `category` TEXT NOT NULL, `state` TEXT NOT NULL, `startTimestamp` INTEGER NOT NULL, `completionTimestamp` INTEGER NOT NULL, `errorReason` TEXT, `progress` INTEGER NOT NULL, `isApplicable` INTEGER NOT NULL, `lastSuccessfulTimestamp` INTEGER NOT NULL, PRIMARY KEY(`taskId`))"
+            )
+        }
+    }
 }
 

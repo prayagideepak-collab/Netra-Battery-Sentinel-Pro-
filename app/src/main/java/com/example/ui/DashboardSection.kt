@@ -48,6 +48,7 @@ fun DashboardSection(
     val powerHistory by viewModel.livePowerHistory.collectAsStateWithLifecycle()
     val tempHistory by viewModel.liveTemperatureHistory.collectAsStateWithLifecycle()
     val systemStatus by viewModel.systemStatus.collectAsStateWithLifecycle()
+    val syncState by viewModel.universalSyncState.collectAsStateWithLifecycle()
 
     var selectedMetricDialog by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
@@ -122,7 +123,7 @@ fun DashboardSection(
                 }
 
                 IconButton(
-                    onClick = { viewModel.resumeSystem(context) },
+                    onClick = { viewModel.triggerUniversalRefresh(context) },
                     modifier = Modifier.size(28.dp).testTag("refresh_telemetry_button")
                 ) {
                     Icon(
@@ -131,6 +132,83 @@ fun DashboardSection(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp)
                     )
+                }
+            }
+        }
+
+        // Universal Sync Status & Live Panel
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (syncState.isRefreshing) "Refreshing application data..." else if (syncState.lastRefreshTimestamp > 0L) "Data Synced: ${syncState.overallPercentage}%" else "Data Synced: Not synchronized yet",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("sync_percentage_text")
+                )
+                if (syncState.lastRefreshTimestamp > 0L) {
+                    Text(
+                        text = "Updated: ${java.text.SimpleDateFormat("hh:mm a", java.util.Locale.US).format(java.util.Date(syncState.lastRefreshTimestamp))}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (syncState.isRefreshing || syncState.tasks.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth().testTag("sync_panel")
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        for ((_, task) in syncState.tasks) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    val (symbol, color) = when (task.state) {
+                                        com.example.engines.coordinator.SyncState.SUCCESS -> "✓" to Color(0xFF00E676)
+                                        com.example.engines.coordinator.SyncState.RUNNING -> "⟳" to Color(0xFFFFAB00)
+                                        com.example.engines.coordinator.SyncState.PENDING -> "○" to Color.Gray
+                                        com.example.engines.coordinator.SyncState.FAILED -> "✕" to Color(0xFFFF1744)
+                                        com.example.engines.coordinator.SyncState.UNAVAILABLE -> "—" to Color.Gray
+                                        com.example.engines.coordinator.SyncState.SKIPPED_WITH_REASON -> "—" to Color.Gray
+                                    }
+                                    Text(
+                                        text = "$symbol ${task.displayName}: ${task.state.name.lowercase()}",
+                                        fontSize = 11.sp,
+                                        color = if (task.state == com.example.engines.coordinator.SyncState.SUCCESS) MaterialTheme.colorScheme.onSurface else color
+                                    )
+                                }
+                                if (!task.errorReason.isNullOrBlank()) {
+                                    Text(
+                                        text = task.errorReason,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.error,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

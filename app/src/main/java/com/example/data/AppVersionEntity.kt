@@ -7,8 +7,8 @@ import androidx.room.PrimaryKey
 data class AppVersionEntity(
     @PrimaryKey
     val id: Int = 1,
-    val versionCode: Int = 306,
-    val versionName: String = "3.3.0-sql-updated",
+    val versionCode: Int = 307,
+    val versionName: String = "3.4.0-sql-updated",
     val lastUpdatedTimestamp: Long = System.currentTimeMillis(),
     val changeDescription: String = "Auto-updated SQL Database version on application startup & state change"
 )

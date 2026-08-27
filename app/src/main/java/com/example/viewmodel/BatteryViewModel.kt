@@ -375,6 +375,8 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    val universalSyncState = com.example.engines.coordinator.UniversalSyncCoordinator.syncStateFlow
+
     fun resumeSystem(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -383,6 +385,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                 triggerRefresh(context)
                 refreshBluetoothDevices(context)
                 loadNetraConnectedDevices()
+                com.example.engines.coordinator.UniversalSyncCoordinator.refreshAll(context)
                 
                 _systemStatus.value = SystemOperationalStatus.ACTIVE_VERIFIED
                 _lastSystemResumeTimestamp.value = System.currentTimeMillis()
@@ -762,6 +765,12 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
 
     fun triggerRefresh(context: Context) {
         com.example.service.BatteryService.requestRefresh(context)
+    }
+
+    fun triggerUniversalRefresh(context: Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.engines.coordinator.UniversalSyncCoordinator.refreshAll(context)
+        }
     }
 
     fun startMonitorService(context: Context) {
