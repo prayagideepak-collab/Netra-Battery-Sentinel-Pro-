@@ -130,16 +130,8 @@ class BatteryVoiceEngine(private val context: Context, private val tts: TextToSp
     }
 
     private fun announce(text: String) {
-        val params = android.os.Bundle().apply {
-            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
-        }
-        VoiceAnnouncementOptimizer.speakWith1SecondCeiling(
-            tts = tts,
-            rawText = text,
-            userBaseSpeed = 1.2f,
-            queueMode = TextToSpeech.QUEUE_FLUSH,
-            params = params
-        )
+        // CRITICAL NETRA AUDIO RULE: Zero battery voice announcements allowed.
+        return
     }
 
     private fun logAnnouncement(percentage: Int, status: String, reason: String, text: String) {

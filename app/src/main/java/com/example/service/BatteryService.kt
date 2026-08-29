@@ -499,6 +499,13 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             Log.e(TAG, "Failed to initialize TTS", e)
         }
 
+        // Initialize Netra Native Automation Service
+        try {
+            NetraNativeAutomationService.initialize(applicationContext)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize NetraNativeAutomationService", e)
+        }
+
         // Initialize Screen State
         try {
             val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -655,6 +662,11 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         forcePowerDisconnected: Boolean = false
     ) {
         android.util.Log.d(TAG, "processBatteryUpdate: intent=${intent.action}, extras=${intent.extras}")
+        try {
+            NetraNativeAutomationService.onBatteryUpdate(this, intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to dispatch update to NetraNativeAutomationService", e)
+        }
         try {
             com.example.engines.WatchdogEngine.registerEvent("Battery")
             com.example.engines.WatchdogEngine.registerEvent("Charging")
@@ -3449,6 +3461,14 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun speakReal(announcement: Announcement, settings: SettingsEntity) {
+        // CRITICAL NETRA AUDIO RULE: NETRA Battery Sentinel Pro must NEVER announce battery information by voice.
+        val textLower = announcement.text.lowercase()
+        if (textLower.contains("battery") || textLower.contains("charging") || textLower.contains("charger") ||
+            textLower.contains("percent") || textLower.contains("full") || textLower.contains("connected") ||
+            textLower.contains("disconnected") || textLower.contains("drain") || textLower.contains("c ") ||
+            textLower.contains("d ") || textLower.contains("100") || textLower.contains("telemetry")) {
+            return
+        }
         val isThermalSafety = announcement.category == AnnouncementCategory.THERMAL_EMERGENCY ||
                               announcement.category == AnnouncementCategory.SAFETY_EMERGENCY ||
                               announcement.priority == Priority.EMERGENCY_SAFETY ||
