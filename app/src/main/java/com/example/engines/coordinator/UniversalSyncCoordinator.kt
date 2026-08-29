@@ -103,7 +103,14 @@ data class SyncTaskResult(
     val errorReason: String? = null,
     val progress: Int = 100,
     val details: String? = null
-)
+) {
+    constructor(syncResult: SyncResult) : this(
+        state = syncResult.toSyncState(),
+        errorReason = syncResult.getReasonOrDetails(),
+        progress = syncResult.resolveProgress(),
+        details = syncResult.getReasonOrDetails()
+    )
+}
 
 data class SyncTaskDescriptor(
     val taskId: String,
@@ -122,7 +129,7 @@ object UniversalSyncCoordinator : Engine {
     private val _syncStateFlow = MutableStateFlow(UniversalSyncState())
     val syncStateFlow: StateFlow<UniversalSyncState> = _syncStateFlow.asStateFlow()
 
-    private val registeredTaskDescriptors = mutableMapOf<String, SyncTaskDescriptor>()
+    private val taskRegistry = SyncTaskRegistry()
 
     init {
         registerDefaultTasks()
@@ -130,7 +137,7 @@ object UniversalSyncCoordinator : Engine {
 
     private fun registerDefaultTasks() {
         // 1. LOCATION TASK
-        registeredTaskDescriptors["LOCATION"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "LOCATION",
             displayName = "Location Fix",
             category = "ENVIRONMENTAL",
@@ -188,10 +195,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Location synchronization error", 0)
                 }
             }
-        )
+        ))
 
         // 2. WEATHER TASK
-        registeredTaskDescriptors["WEATHER"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "WEATHER",
             displayName = "Weather & Environmental Telemetry",
             category = "ENVIRONMENTAL",
@@ -199,7 +206,7 @@ object UniversalSyncCoordinator : Engine {
             executor = { context ->
                 try {
                     val status = EnvironmentalContextEngine.forceSyncEnvironmentalContext(context)
-                    if (status == SyncStatus.SUCCESS) {
+                    if (status == SyncStatus.SUCCESS || status == SyncStatus.PRELOADED || status == SyncStatus.PENDING) {
                         val dataset = EnvironmentalContextEngine.datasetFlow.value
                         SyncTaskResult(
                             state = SyncState.SUCCESS,
@@ -214,10 +221,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Weather synchronization error", 0)
                 }
             }
-        )
+        ))
 
         // 3. BATTERY TELEMETRY TASK
-        registeredTaskDescriptors["BATTERY_TELEMETRY"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "BATTERY_TELEMETRY",
             displayName = "Battery Telemetry",
             category = "HARDWARE",
@@ -243,10 +250,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Battery telemetry error", 0)
                 }
             }
-        )
+        ))
 
         // 4. NETWORK STATE TASK
-        registeredTaskDescriptors["NETWORK_STATE"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "NETWORK_STATE",
             displayName = "Network State & Telemetry",
             category = "CONNECTIVITY",
@@ -268,10 +275,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Network state error", 0)
                 }
             }
-        )
+        ))
 
         // 5. WIFI TASK
-        registeredTaskDescriptors["WIFI"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "WIFI",
             displayName = "Wi-Fi Telemetry",
             category = "CONNECTIVITY",
@@ -298,10 +305,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Wi-Fi check error", 0)
                 }
             }
-        )
+        ))
 
         // 6. MOBILE DATA TASK
-        registeredTaskDescriptors["MOBILE_DATA"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "MOBILE_DATA",
             displayName = "Cellular & Mobile Data",
             category = "CONNECTIVITY",
@@ -322,10 +329,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Mobile data error", 0)
                 }
             }
-        )
+        ))
 
         // 7. BLUETOOTH TASK
-        registeredTaskDescriptors["BLUETOOTH"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "BLUETOOTH",
             displayName = "Bluetooth Subsystem",
             category = "CONNECTIVITY",
@@ -355,10 +362,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Bluetooth sync error", 0)
                 }
             }
-        )
+        ))
 
         // 8. CONNECTED DEVICES TASK
-        registeredTaskDescriptors["CONNECTED_DEVICES"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "CONNECTED_DEVICES",
             displayName = "Connected Devices Hub",
             category = "HARDWARE",
@@ -371,10 +378,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Connected devices reconciliation error", 0)
                 }
             }
-        )
+        ))
 
         // 9. APPLICATION STATE TASK
-        registeredTaskDescriptors["APPLICATION_STATE"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "APPLICATION_STATE",
             displayName = "Application Services & State",
             category = "SYSTEM",
@@ -391,10 +398,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Application state error", 0)
                 }
             }
-        )
+        ))
 
         // 10. DATABASE STATE TASK
-        registeredTaskDescriptors["DATABASE_STATE"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "DATABASE_STATE",
             displayName = "Database & Schema Integrity",
             category = "SYSTEM",
@@ -415,10 +422,10 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "Database read/integrity error", 0)
                 }
             }
-        )
+        ))
 
         // 11. APP CONSUMPTION TELEMETRY TASK
-        registeredTaskDescriptors["APP_CONSUMPTION"] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = "APP_CONSUMPTION",
             displayName = "App Consumption Telemetry",
             category = "SYSTEM",
@@ -436,7 +443,7 @@ object UniversalSyncCoordinator : Engine {
                     SyncTaskResult(SyncState.FAILED, e.message ?: "App consumption query error", 0)
                 }
             }
-        )
+        ))
     }
 
     fun registerSyncTask(
@@ -446,14 +453,14 @@ object UniversalSyncCoordinator : Engine {
         isApplicable: (Context) -> Boolean = { true },
         checker: suspend (Context) -> SyncTaskResult
     ) {
-        registeredTaskDescriptors[taskId] = SyncTaskDescriptor(
+        taskRegistry.registerTask(SyncTaskDescriptor(
             taskId = taskId,
             displayName = displayName,
             category = category,
             isApplicable = isApplicable,
             executor = checker
-        )
-        Log.i(TAG, "Registered new synchronization task: $taskId")
+        ))
+        Log.i(TAG, "Registered new synchronization task via UniversalSyncCoordinator: $taskId")
     }
 
     fun registerSyncTask(taskId: String, checker: suspend (Context) -> SyncTaskResult) {
@@ -465,6 +472,8 @@ object UniversalSyncCoordinator : Engine {
             checker = checker
         )
     }
+
+    fun getTaskRegistry(): SyncTaskRegistry = taskRegistry
 
     override fun initialize(context: Context) {
         Log.i(TAG, "UniversalSyncCoordinator initialized.")
@@ -511,8 +520,10 @@ object UniversalSyncCoordinator : Engine {
         val sessionId = System.currentTimeMillis()
         Log.i(TAG, "Starting refresh session #$sessionId")
 
+        val allDescriptors = taskRegistry.getAllTasks()
+
         // 1. Initial State: All tasks start as PENDING with progress = 0 (Truthful live progress)
-        val initialTasks = registeredTaskDescriptors.values.associate { descriptor ->
+        val initialTasks = allDescriptors.associate { descriptor ->
             descriptor.taskId to SyncTaskModel(
                 taskId = descriptor.taskId,
                 displayName = descriptor.displayName,
@@ -538,7 +549,7 @@ object UniversalSyncCoordinator : Engine {
         val dao = BatteryDatabase.getDatabase(context).syncTaskDao()
 
         // 2. Sequential execution with true state transitions (PENDING -> RUNNING -> FINAL_STATE)
-        for (descriptor in registeredTaskDescriptors.values) {
+        for (descriptor in allDescriptors) {
             val taskId = descriptor.taskId
             val taskStart = System.currentTimeMillis()
 

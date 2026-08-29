@@ -56,11 +56,12 @@ object GlobalDataRefreshCoordinator : Engine {
         val uniState = UniversalSyncCoordinator.refreshAll(context)
         val tasks = uniState.tasks
 
-        val locOk = tasks["LOCATION"]?.state == SyncState.SUCCESS
-        val weatherOk = tasks["WEATHER"]?.state == SyncState.SUCCESS
-        val batteryOk = tasks["BATTERY_TELEMETRY"]?.state == SyncState.SUCCESS
-        val netOk = tasks["NETWORK_STATE"]?.state == SyncState.SUCCESS
-        val appOk = tasks["APP_CONSUMPTION"]?.state == SyncState.SUCCESS || tasks["APPLICATION_STATE"]?.state == SyncState.SUCCESS
+        val locOk = tasks["LOCATION"]?.state in listOf(SyncState.SUCCESS, SyncState.UNAVAILABLE, SyncState.SKIPPED_WITH_REASON)
+        val weatherOk = tasks["WEATHER"]?.state in listOf(SyncState.SUCCESS, SyncState.UNAVAILABLE, SyncState.SKIPPED_WITH_REASON)
+        val batteryOk = tasks["BATTERY_TELEMETRY"]?.state in listOf(SyncState.SUCCESS, SyncState.UNAVAILABLE)
+        val netOk = tasks["NETWORK_STATE"]?.state in listOf(SyncState.SUCCESS, SyncState.UNAVAILABLE, SyncState.SKIPPED_WITH_REASON)
+        val appOk = (tasks["APP_CONSUMPTION"]?.state in listOf(SyncState.SUCCESS, SyncState.UNAVAILABLE, SyncState.SKIPPED_WITH_REASON)) ||
+                    (tasks["APPLICATION_STATE"]?.state in listOf(SyncState.SUCCESS, SyncState.UNAVAILABLE, SyncState.SKIPPED_WITH_REASON))
 
         val overallStatus = if (uniState.overallPercentage >= 50) RefreshStatus.SUCCESS else RefreshStatus.STALE
 

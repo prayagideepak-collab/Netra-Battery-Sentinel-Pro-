@@ -26,6 +26,10 @@ class WeatherEnvironmentalTruthfulnessTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        org.robolectric.Shadows.shadowOf(org.robolectric.RuntimeEnvironment.getApplication()).grantPermissions(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
     }
 
     @Test
