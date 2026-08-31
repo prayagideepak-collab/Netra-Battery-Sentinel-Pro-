@@ -95,10 +95,12 @@ class FestivalWeatherDashboardIntegrationTest {
     }
 
     @Test
-    fun testGlobalDataRefreshCoordinatorExecution() = runTest {
+    fun testGlobalDataRefreshCoordinatorExecution() {
         try {
-            val refreshState = GlobalDataRefreshCoordinator.refreshAll(context)
-            assertNotNull(refreshState)
+            kotlinx.coroutines.runBlocking {
+                val refreshState = GlobalDataRefreshCoordinator.refreshAll(context)
+                assertNotNull(refreshState)
+            }
         } catch (ignored: Exception) {}
     }
 }

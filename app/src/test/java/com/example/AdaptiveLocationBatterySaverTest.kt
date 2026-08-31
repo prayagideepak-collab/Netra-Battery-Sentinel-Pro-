@@ -57,7 +57,7 @@ class AdaptiveLocationBatterySaverTest {
     }
 
     @Test
-    fun samplingCycle_safeWithoutLocationPermissions() = testScope.runTest {
+    fun samplingCycle_safeWithoutLocationPermissions() = runTest {
         var updatedLocation: Location? = null
         val saver = AdaptiveLocationBatterySaver(context, testScope) { loc ->
             updatedLocation = loc
