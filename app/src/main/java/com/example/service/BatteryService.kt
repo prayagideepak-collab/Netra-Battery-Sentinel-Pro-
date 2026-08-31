@@ -354,6 +354,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                         ) 
                     }
                     lastScreenOnTime = System.currentTimeMillis()
+                    com.example.engines.coordinator.NetraMultiMechanismCoordinator.onScreenOnOrUnlocked(context)
                     checkPocketMode()
                     serviceScope.launch(Dispatchers.IO) {
                         repository?.let { 
@@ -371,6 +372,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                     unregisterSensors()
                     NAPIEEngine.updateMode(context, isScreenOn = isScreenOn, isCharging = lastPluggedState, isMoving = false)
                     com.example.engines.ScreenOffConservationEngine.onScreenOff(context)
+                    com.example.engines.coordinator.NetraMultiMechanismCoordinator.onScreenOff(context)
                     com.example.engines.power.AutonomousPowerPolicyEngine.onScreenStateChanged(context, false)
                     val policyState = com.example.engines.power.AutonomousPowerPolicyEngine.policyState.value
                     liveBatteryState.update { 
@@ -394,6 +396,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                 }
                 Intent.ACTION_USER_PRESENT -> {
                     checkFullChargeAnnouncement()
+                    com.example.engines.coordinator.NetraMultiMechanismCoordinator.onScreenOnOrUnlocked(context)
                 }
             }
         }

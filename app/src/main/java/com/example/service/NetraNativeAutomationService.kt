@@ -84,6 +84,9 @@ object NetraNativeAutomationService {
                 val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
                 val isPlugged = plugged != 0
 
+                // Notify NetraMultiMechanismCoordinator (Capability A, C, D)
+                com.example.engines.coordinator.NetraMultiMechanismCoordinator.onBatteryTelemetryUpdate(context, percentage, isCharging, currentTemp)
+
                 // 1. Power Connected / Disconnected detection
                 if (lastPowerConnected != isPlugged) {
                     lastPowerConnected = isPlugged
@@ -117,6 +120,7 @@ object NetraNativeAutomationService {
     fun onDeviceUnlocked(context: Context) {
         scope.launch {
             Log.d(TAG, "Device unlocked event received in automation service. Evaluating tracking state...")
+            com.example.engines.coordinator.NetraMultiMechanismCoordinator.onScreenOnOrUnlocked(context)
             if (isChargingActive) {
                 val db = BatteryDatabase.getDatabase(context)
                 val active = db.batteryDao().getActiveSession()
