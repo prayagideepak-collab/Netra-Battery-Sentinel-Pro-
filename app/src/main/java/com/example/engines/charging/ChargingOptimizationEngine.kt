@@ -57,6 +57,8 @@ object ChargingOptimizationEngine {
     private val tempTelemetryHistory = mutableListOf<Pair<Long, Float>>()
     private val batteryTelemetryHistory = mutableListOf<Pair<Long, Int>>()
 
+    var onChargingEventCallback: ((eventType: String, title: String, details: String) -> Unit)? = null
+
     @Synchronized
     fun resetForTesting(context: Context) {
         currentState = ChargingOptimizationState.NOT_CHARGING
@@ -91,7 +93,7 @@ object ChargingOptimizationEngine {
         if (batteryTelemetryHistory.size > 50) batteryTelemetryHistory.removeAt(0)
 
         val thermalState = ThermalProtectionEngine.processTemperature(temperature, context)
-        val isThermalProtected = ThermalProtectionEngine.isProtectionActive() || thermalState == ThermalSessionState.PROTECTED
+        val isThermalProtected = ThermalProtectionEngine.isProtectionActive() || thermalState == ThermalSessionState.THERMAL_PROTECTION || thermalState == ThermalSessionState.THERMAL_ESCALATED
 
         if (!isCharging) {
             if (currentState != ChargingOptimizationState.NOT_CHARGING) {
@@ -99,6 +101,11 @@ object ChargingOptimizationEngine {
                 endChargingSession(context, batteryLevel, temperature, false)
                 currentState = ChargingOptimizationState.NOT_CHARGING
                 activeSnapshot = null
+                onChargingEventCallback?.invoke(
+                    "CHARGING_DISCONNECTED",
+                    "Charging Disconnected",
+                    "Battery: $batteryLevel%, Temp: $temperature°C"
+                )
             }
             return currentState
         }
@@ -131,14 +138,30 @@ object ChargingOptimizationEngine {
                 }
             }
             Log.i(TAG, "Charging connected at $batteryLevel%, Temp: $temperature°C. Optimization started.")
+            onChargingEventCallback?.invoke(
+                "CHARGING_CONNECTED",
+                "Charging Connected",
+                "Battery: $batteryLevel%, Type: $chargingType, Temp: $temperature°C"
+            )
         }
 
+        // Priority: THERMAL PROTECTION > CHARGING OPTIMIZATION
         if (isThermalProtected || temperature >= 43.0f) {
             currentState = ChargingOptimizationState.THERMAL_LIMITED_CHARGING
             Log.w(TAG, "Thermal protection active ($temperature°C >= 43°C). Thermal Limited Charging active. Overrides general charging optimization.")
+            onChargingEventCallback?.invoke(
+                "CHARGING_OPTIMIZATION_LIMITED",
+                "Thermal Limited Charging",
+                "Temperature $temperature°C >= 43°C. Charging throttled for safety."
+            )
         } else if (batteryLevel >= 100) {
             currentState = ChargingOptimizationState.FULL_CHARGE
             Log.i(TAG, "Battery full (100%). Full charge tracking recorded.")
+            onChargingEventCallback?.invoke(
+                "FULL_CHARGE_REACHED",
+                "Full Charge Reached",
+                "Battery reached 100% at temperature $temperature°C."
+            )
         } else {
             currentState = ChargingOptimizationState.CHARGING_OPTIMIZED
         }
@@ -159,7 +182,7 @@ object ChargingOptimizationEngine {
                         val updated = session.copy(
                             endTime = now,
                             endPercentage = finalBattery,
-                            maxTemperature = finalTemp
+                            maxTemperature = if (finalTemp > session.maxTemperature) finalTemp else session.maxTemperature
                         )
                         dao.updateSession(updated)
                         Log.i(TAG, "Charging session $dbId finalized in DB.")

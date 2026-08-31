@@ -58,8 +58,8 @@ data class SettingsEntity(
     val deviceAdminEnabled: Boolean = false,
     val autoStartConfigured: Boolean = false,
     val deepSleepModeEnabled: Boolean = true,
-    val deepSleepStartTime: String = "09:00 PM",
-    val deepSleepEndTime: String = "06:00 AM",
+    val deepSleepStartTime: String = "08:00 PM",
+    val deepSleepEndTime: String = "07:00 AM",
     
     // --- NETRA MONETIZATION ENGINE V1.0 FIELDS ---
     val isPremium: Boolean = true,

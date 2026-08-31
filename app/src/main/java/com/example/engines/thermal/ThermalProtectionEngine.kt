@@ -15,10 +15,14 @@ import java.util.UUID
  */
 enum class ThermalSessionState {
     NORMAL,
-    PROTECTION_ENTERING,
-    PROTECTED,
-    RECOVERY_PENDING,
-    RESTORING
+    THERMAL_PROTECTION,
+    THERMAL_ESCALATED,
+    RESTORING,
+    RESTORED;
+
+    // Compatibility helpers
+    val isProtected: Boolean
+        get() = this == THERMAL_PROTECTION || this == THERMAL_ESCALATED
 }
 
 /**
@@ -30,7 +34,7 @@ data class ThermalSnapshot(
     val entryTemperature: Float = 0f,
     val previousBrightnessValue: Int = 128,
     val previousBrightnessMode: Int = Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL,
-    val targetThermalBrightness: Int = 25, // ~10% dimming
+    val targetThermalBrightness: Int = 13, // 5% dimming (13/255)
     val brightnessModified: Boolean = false,
     val brightnessModeModified: Boolean = false,
     val previousSyncEnabled: Boolean = false,
@@ -53,7 +57,7 @@ data class ThermalSnapshot(
         json.put("syncModified", syncModified)
         json.put("previousBackgroundRestricted", previousBackgroundRestricted)
         json.put("backgroundRestrictedModified", backgroundRestrictedModified)
-        
+
         val actionsArray = JSONArray()
         appliedActions.forEach { actionsArray.put(it) }
         json.put("appliedActions", actionsArray)
@@ -77,7 +81,7 @@ data class ThermalSnapshot(
                     entryTemperature = json.optDouble("entryTemperature", 0.0).toFloat(),
                     previousBrightnessValue = json.optInt("previousBrightnessValue", 128),
                     previousBrightnessMode = json.optInt("previousBrightnessMode", Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL),
-                    targetThermalBrightness = json.optInt("targetThermalBrightness", 25),
+                    targetThermalBrightness = json.optInt("targetThermalBrightness", 13),
                     brightnessModified = json.optBoolean("brightnessModified", false),
                     brightnessModeModified = json.optBoolean("brightnessModeModified", false),
                     previousSyncEnabled = json.optBoolean("previousSyncEnabled", false),
@@ -95,25 +99,32 @@ data class ThermalSnapshot(
 
 /**
  * Central Automatic Thermal Protection and State Restoration Engine.
- * 
+ *
  * Guarantees:
  * 1. Fully automatic operation from battery temperature signals (No manual buttons).
- * 2. Mandatory pre-action snapshot persisted synchronously before any modification.
- * 3. Hysteresis: Overheat >= 45°C, Safe Recovery <= 40°C.
- * 4. Exact restoration of modified properties with safe concurrent user change detection.
- * 5. Crash and restart safety across process/service recreation.
- * 6. Zero voice announcements.
+ * 2. 43°C Protection (2 consecutive readings required) -> Dims brightness to 5%, throttles background workload.
+ * 3. 45°C Escalation (2 consecutive readings required) -> Controlled safety announcement.
+ * 4. <=40°C Automatic Restoration (3 consecutive readings required) -> Restores captured pre-protection state.
+ * 5. Mandatory pre-action snapshot persisted synchronously before any modification.
+ * 6. User Manual Brightness change protection (skips overwriting user choice).
+ * 7. Crash and restart safety across process/service recreation.
  */
 object ThermalProtectionEngine {
     private const val TAG = "ThermalProtectionEngine"
-    private const val PREFS_NAME = "netra_thermal_protection_v2"
+    private const val PREFS_NAME = "netra_thermal_protection_v3"
     private const val KEY_SESSION_STATE = "thermal_session_state"
     private const val KEY_ACTIVE_SNAPSHOT = "thermal_active_snapshot"
     private const val KEY_LAST_KNOWN_TEMP = "thermal_last_known_temp"
 
-    const val DEFAULT_OVERHEAT_THRESHOLD_C = 45.0f
-    const val DEFAULT_RECOVERY_THRESHOLD_C = 40.0f
-    const val THERMAL_DIM_BRIGHTNESS = 25 // ~10%
+    const val PROTECTION_THRESHOLD_C = 43.0f
+    const val ESCALATION_THRESHOLD_C = 45.0f
+    const val RESTORATION_THRESHOLD_C = 40.0f
+    const val THERMAL_DIM_BRIGHTNESS = 13 // 5% of 255
+
+    // Debounce counters
+    @Volatile private var protectionReadingCount = 0
+    @Volatile private var escalationReadingCount = 0
+    @Volatile private var recoveryReadingCount = 0
 
     @Volatile
     private var currentState: ThermalSessionState = ThermalSessionState.NORMAL
@@ -123,6 +134,14 @@ object ThermalProtectionEngine {
 
     @Volatile
     private var isInitialized = false
+
+    @Volatile
+    private var lastSpokenTemp = -1f
+    @Volatile
+    private var lastAnnouncementTime = 0L
+
+    var onThermalEventCallback: ((eventType: String, title: String, details: String) -> Unit)? = null
+    var onThermalSpeechCallback: ((text: String) -> Unit)? = null
 
     @Synchronized
     fun initialize(context: Context) {
@@ -138,15 +157,14 @@ object ThermalProtectionEngine {
         val snapshotJson = prefs.getString(KEY_ACTIVE_SNAPSHOT, null)
         activeSnapshot = if (snapshotJson != null) ThermalSnapshot.fromJson(snapshotJson) else null
 
-        // If in an active protected state on startup, check if we need to auto-restore or maintain protection
-        if (currentState == ThermalSessionState.PROTECTED || currentState == ThermalSessionState.PROTECTION_ENTERING) {
+        // If in an active protected state on startup, verify if we need to auto-restore or maintain protection
+        if (currentState == ThermalSessionState.THERMAL_PROTECTION || currentState == ThermalSessionState.THERMAL_ESCALATED) {
             val lastTemp = prefs.getFloat(KEY_LAST_KNOWN_TEMP, -999f)
-            if (lastTemp != -999f && lastTemp <= DEFAULT_RECOVERY_THRESHOLD_C) {
+            if (lastTemp != -999f && lastTemp <= RESTORATION_THRESHOLD_C) {
                 Log.i(TAG, "Process restarted with safe temperature ($lastTemp°C). Initiating automatic restoration.")
                 restoreDeviceState(context)
             } else {
                 Log.i(TAG, "Process restarted with active thermal protection. Preserving existing snapshot.")
-                currentState = ThermalSessionState.PROTECTED
             }
         }
         isInitialized = true
@@ -161,32 +179,68 @@ object ThermalProtectionEngine {
         if (temperature == -999f) return currentState
         if (!isInitialized) initialize(context)
 
-        val overheatThreshold = settings?.tempAlertThreshold ?: DEFAULT_OVERHEAT_THRESHOLD_C
-        val recoveryThreshold = minOf(DEFAULT_RECOVERY_THRESHOLD_C, overheatThreshold - 5.0f)
-
         // Save last known temperature for crash recovery
         getPrefs(context).edit().putFloat(KEY_LAST_KNOWN_TEMP, temperature).apply()
 
+        // 1. Debounce Evaluation
+        if (temperature >= ESCALATION_THRESHOLD_C) {
+            escalationReadingCount++
+            protectionReadingCount = 2 // Escalation implies protection confirmed
+            recoveryReadingCount = 0
+        } else if (temperature >= PROTECTION_THRESHOLD_C) {
+            protectionReadingCount++
+            escalationReadingCount = 0
+            recoveryReadingCount = 0
+        } else if (temperature <= RESTORATION_THRESHOLD_C) {
+            recoveryReadingCount++
+            protectionReadingCount = 0
+            escalationReadingCount = 0
+        } else {
+            // Temperature in deadband (40.1°C to 42.9°C): reset recovery and trigger counters
+            recoveryReadingCount = 0
+            protectionReadingCount = 0
+            escalationReadingCount = 0
+        }
+
+        // 2. State Machine Transitions
         when (currentState) {
-            ThermalSessionState.NORMAL -> {
-                if (temperature >= overheatThreshold) {
-                    Log.w(TAG, "Overheat condition detected: $temperature°C >= $overheatThreshold°C. Entering thermal protection.")
+            ThermalSessionState.NORMAL, ThermalSessionState.RESTORED -> {
+                if (escalationReadingCount >= 2) {
+                    Log.w(TAG, "THERMAL_45C_ESCALATED triggered at $temperature°C (2 readings confirmed)")
+                    executeProtection(context, temperature)
+                    escalateThermalProtection(context, temperature)
+                } else if (protectionReadingCount >= 2) {
+                    Log.w(TAG, "THERMAL_43C_TRIGGERED at $temperature°C (2 readings confirmed)")
                     executeProtection(context, temperature)
                 }
             }
-            ThermalSessionState.PROTECTED, ThermalSessionState.PROTECTION_ENTERING -> {
-                if (temperature <= recoveryThreshold) {
-                    Log.i(TAG, "Safe recovery condition confirmed: $temperature°C <= $recoveryThreshold°C. Initiating automatic restoration.")
+            ThermalSessionState.THERMAL_PROTECTION -> {
+                if (escalationReadingCount >= 2) {
+                    Log.w(TAG, "Escalating from THERMAL_PROTECTION to THERMAL_ESCALATED at $temperature°C")
+                    escalateThermalProtection(context, temperature)
+                } else if (recoveryReadingCount >= 3) {
+                    Log.i(TAG, "Safe temperature <= 40°C confirmed 3 times ($temperature°C). Starting restoration.")
                     restoreDeviceState(context)
                 } else {
-                    // Temperature remains above recovery threshold (e.g. 42°C, 44.9°C).
-                    // Idempotent: Do NOT re-capture snapshot or re-modify settings.
-                    Log.d(TAG, "Maintaining thermal protection at $temperature°C (Safe threshold <= $recoveryThreshold°C)")
+                    Log.d(TAG, "Maintaining THERMAL_PROTECTION at $temperature°C")
                 }
             }
-            ThermalSessionState.RECOVERY_PENDING, ThermalSessionState.RESTORING -> {
-                // Restoration in progress or finalizing
-                if (temperature <= recoveryThreshold) {
+            ThermalSessionState.THERMAL_ESCALATED -> {
+                if (recoveryReadingCount >= 3) {
+                    Log.i(TAG, "Safe temperature <= 40°C confirmed 3 times ($temperature°C). Starting restoration from escalated.")
+                    restoreDeviceState(context)
+                } else if (temperature < ESCALATION_THRESHOLD_C && temperature >= PROTECTION_THRESHOLD_C) {
+                    // Temperature cooled down below 45°C but still >= 43°C -> remain protected
+                    currentState = ThermalSessionState.THERMAL_PROTECTION
+                    persistSession(context, currentState, activeSnapshot ?: ThermalSnapshot())
+                    Log.i(TAG, "Temperature lowered to $temperature°C; de-escalating to THERMAL_PROTECTION")
+                } else {
+                    // Overheating continues: check for repeated safety announcement with cooldown
+                    checkRepeatedOverheatingSpeech(temperature)
+                }
+            }
+            ThermalSessionState.RESTORING -> {
+                if (recoveryReadingCount >= 3) {
                     restoreDeviceState(context)
                 }
             }
@@ -197,8 +251,6 @@ object ThermalProtectionEngine {
 
     @Synchronized
     private fun executeProtection(context: Context, temperature: Float) {
-        currentState = ThermalSessionState.PROTECTION_ENTERING
-
         val resolver = context.contentResolver
 
         // 1. Capture exact current pre-action state
@@ -225,7 +277,7 @@ object ThermalProtectionEngine {
             false
         }
 
-        // 2. Build initial pre-action snapshot
+        // 2. Build pre-action snapshot
         val snapshot = ThermalSnapshot(
             sessionId = UUID.randomUUID().toString(),
             timestamp = System.currentTimeMillis(),
@@ -237,11 +289,11 @@ object ThermalProtectionEngine {
             previousBackgroundRestricted = false
         )
 
-        // 3. PERSIST SNAPSHOT SYNCHRONOUSLY BEFORE ANY HARDWARE MODIFICATION (Crash-Safety)
-        persistSession(context, ThermalSessionState.PROTECTED, snapshot)
+        // 3. PERSIST SNAPSHOT SYNCHRONOUSLY BEFORE ANY HARDWARE MODIFICATION (Crash Safety)
+        persistSession(context, ThermalSessionState.THERMAL_PROTECTION, snapshot)
         activeSnapshot = snapshot
 
-        // 4. Apply device protection actions with individual failure tracking
+        // 4. Apply device protection actions
         val appliedActionsList = mutableListOf<String>()
         var brightnessSuccess = false
         var brightnessModeSuccess = false
@@ -258,17 +310,17 @@ object ThermalProtectionEngine {
                 brightnessModeSuccess = true
                 appliedActionsList.add("SCREEN_BRIGHTNESS_MODE_MANUAL")
 
-                // Dim display to thermal level (~10%)
+                // Dim display to 5%
                 Settings.System.putInt(
                     resolver,
                     Settings.System.SCREEN_BRIGHTNESS,
                     THERMAL_DIM_BRIGHTNESS
                 )
                 brightnessSuccess = true
-                appliedActionsList.add("SCREEN_BRIGHTNESS_DIM")
-                Log.i(TAG, "Thermal protection: Display dimmed to $THERMAL_DIM_BRIGHTNESS in manual mode.")
+                appliedActionsList.add("BRIGHTNESS_CHANGED_5_PERCENT")
+                Log.i(TAG, "Thermal protection: Display dimmed to 5% ($THERMAL_DIM_BRIGHTNESS) in manual mode.")
             } else {
-                Log.d(TAG, "WRITE_SETTINGS permission unavailable for display dimming.")
+                Log.d(TAG, "WRITE_SETTINGS permission unavailable for display dimming: UNAVAILABLE_BY_ANDROID")
             }
         } catch (e: Exception) {
             Log.w(TAG, "Thermal display dimming action failed: ${e.message}")
@@ -279,13 +331,12 @@ object ThermalProtectionEngine {
                 ContentResolver.setMasterSyncAutomatically(false)
                 syncSuccess = true
                 appliedActionsList.add("MASTER_SYNC_DISABLED")
-                Log.i(TAG, "Thermal protection: Master sync suspended.")
             }
         } catch (e: Exception) {
             Log.d(TAG, "Sync restriction not applicable: ${e.message}")
         }
 
-        // 5. Update snapshot with actual applied actions and persist
+        // 5. Update snapshot with actual applied actions
         val finalSnapshot = snapshot.copy(
             brightnessModified = brightnessSuccess,
             brightnessModeModified = brightnessModeSuccess,
@@ -294,10 +345,43 @@ object ThermalProtectionEngine {
             appliedActions = appliedActionsList
         )
         activeSnapshot = finalSnapshot
-        currentState = ThermalSessionState.PROTECTED
-        persistSession(context, ThermalSessionState.PROTECTED, finalSnapshot)
+        currentState = ThermalSessionState.THERMAL_PROTECTION
+        persistSession(context, ThermalSessionState.THERMAL_PROTECTION, finalSnapshot)
 
-        Log.w(TAG, "Thermal Protection Active (Session: ${finalSnapshot.sessionId}, Temp: $temperature°C, Actions: ${appliedActionsList.size})")
+        onThermalEventCallback?.invoke(
+            "THERMAL_43C_TRIGGERED",
+            "Thermal Protection Activated",
+            "Temperature reached $temperature°C (>=43°C confirmed). Display dimmed to 5%, background protection engaged."
+        )
+    }
+
+    @Synchronized
+    private fun escalateThermalProtection(context: Context, temperature: Float) {
+        currentState = ThermalSessionState.THERMAL_ESCALATED
+        persistSession(context, ThermalSessionState.THERMAL_ESCALATED, activeSnapshot ?: ThermalSnapshot())
+
+        val speechText = "Your battery is overheating ${temperature.toInt()}°C"
+        lastSpokenTemp = temperature
+        lastAnnouncementTime = System.currentTimeMillis()
+
+        Log.w(TAG, "THERMAL ESCALATION: $speechText (Safety voice alert triggered)")
+        onThermalSpeechCallback?.invoke(speechText)
+        onThermalEventCallback?.invoke(
+            "THERMAL_45C_ESCALATED",
+            "Thermal Escalation (Overheating)",
+            "Battery temperature $temperature°C (>=45°C). Critical safety alert triggered."
+        )
+    }
+
+    private fun checkRepeatedOverheatingSpeech(temperature: Float) {
+        val now = System.currentTimeMillis()
+        if (now - lastAnnouncementTime > 60000L || temperature >= lastSpokenTemp + 1.0f) {
+            lastAnnouncementTime = now
+            lastSpokenTemp = temperature
+            val speechText = "Your battery is overheating ${temperature.toInt()}°C"
+            Log.w(TAG, "THERMAL ESCALATION REPEATED: $speechText")
+            onThermalSpeechCallback?.invoke(speechText)
+        }
     }
 
     @Synchronized
@@ -316,12 +400,16 @@ object ThermalProtectionEngine {
         }
 
         currentState = ThermalSessionState.RESTORING
-        Log.i(TAG, "Executing exact state restoration for session ${snapshot.sessionId}")
+        onThermalEventCallback?.invoke(
+            "RESTORATION_STARTED",
+            "Thermal Restoration Started",
+            "Battery temperature cooled to <=40°C. Restoring pre-protection baseline."
+        )
 
         val resolver = context.contentResolver
         var allRestored = true
 
-        // 1. Restore Brightness & Mode (Exact Restoration + Safe Concurrent User Change Check)
+        // 1. Restore Brightness & Mode
         if (snapshot.brightnessModified || snapshot.brightnessModeModified) {
             try {
                 if (Settings.System.canWrite(context)) {
@@ -331,9 +419,9 @@ object ThermalProtectionEngine {
                         -1
                     )
 
-                    // If user manually changed brightness to something other than our thermal dim value (25),
-                    // respect user intent or restore pre-thermal baseline safely.
-                    // If current brightness is still at our thermal dim level (25), restore original brightness value!
+                    // Safe concurrent user change detection:
+                    // If user manually changed brightness to something other than our thermal dim value (13),
+                    // respect user intent! Otherwise restore pre-protection brightness.
                     if (snapshot.brightnessModified) {
                         if (currentBrightness == snapshot.targetThermalBrightness || currentBrightness == -1) {
                             Settings.System.putInt(
@@ -341,20 +429,20 @@ object ThermalProtectionEngine {
                                 Settings.System.SCREEN_BRIGHTNESS,
                                 snapshot.previousBrightnessValue
                             )
-                            Log.i(TAG, "Restored pre-thermal brightness: ${snapshot.previousBrightnessValue}")
+                            Log.i(TAG, "BRIGHTNESS_RESTORED: ${snapshot.previousBrightnessValue}")
+                            onThermalEventCallback?.invoke("BRIGHTNESS_RESTORED", "Brightness Restored", "Restored to ${snapshot.previousBrightnessValue}")
                         } else {
-                            Log.i(TAG, "Preserving user manual post-protection brightness: $currentBrightness")
+                            Log.i(TAG, "RESTORATION_SKIPPED_USER_CHANGED: Current brightness is $currentBrightness (user manual change detected)")
+                            onThermalEventCallback?.invoke("RESTORATION_SKIPPED_USER_CHANGED", "User Brightness Preserved", "User modified brightness during protection to $currentBrightness")
                         }
                     }
 
-                    // Restore brightness mode (Auto vs Manual)
                     if (snapshot.brightnessModeModified) {
                         Settings.System.putInt(
                             resolver,
                             Settings.System.SCREEN_BRIGHTNESS_MODE,
                             snapshot.previousBrightnessMode
                         )
-                        Log.i(TAG, "Restored pre-thermal brightness mode: ${snapshot.previousBrightnessMode}")
                     }
                 }
             } catch (e: Exception) {
@@ -363,22 +451,28 @@ object ThermalProtectionEngine {
             }
         }
 
-        // 2. Restore Master Sync if changed by thermal protection
+        // 2. Restore Master Sync
         if (snapshot.syncModified && snapshot.previousSyncEnabled) {
             try {
                 ContentResolver.setMasterSyncAutomatically(true)
-                Log.i(TAG, "Restored pre-thermal master sync: ON")
+                onThermalEventCallback?.invoke("SYNC_RESTORED", "Sync Restored", "Master sync re-enabled.")
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to restore master sync: ${e.message}")
                 allRestored = false
             }
         }
 
-        // 3. Complete thermal session & transition to NORMAL
-        currentState = ThermalSessionState.NORMAL
+        onThermalEventCallback?.invoke("BACKGROUND_PROTECTION_RELEASED", "Background Protection Released", "Normal background scheduling restored.")
+
+        // 3. Finalize
+        currentState = ThermalSessionState.RESTORED
         activeSnapshot = null
         clearSession(context)
-        Log.i(TAG, "Thermal session successfully closed. System returned to NORMAL state.")
+        currentState = ThermalSessionState.NORMAL
+
+        val resultEvent = if (allRestored) "RESTORATION_COMPLETED" else "RESTORATION_PARTIAL"
+        onThermalEventCallback?.invoke(resultEvent, "Thermal Restoration Completed", "System returned to normal operational state.")
+        Log.i(TAG, "Thermal session successfully closed ($resultEvent).")
 
         return allRestored
     }
@@ -391,7 +485,7 @@ object ThermalProtectionEngine {
         getPrefs(context).edit()
             .putString(KEY_SESSION_STATE, state.name)
             .putString(KEY_ACTIVE_SNAPSHOT, snapshot.toJson())
-            .commit() // Synchronous flush to disk for crash safety
+            .commit()
     }
 
     private fun clearSession(context: Context) {
@@ -410,16 +504,18 @@ object ThermalProtectionEngine {
     fun getActiveSnapshot(): ThermalSnapshot? = activeSnapshot
 
     fun isProtectionActive(): Boolean =
-        currentState == ThermalSessionState.PROTECTED || currentState == ThermalSessionState.PROTECTION_ENTERING
+        currentState == ThermalSessionState.THERMAL_PROTECTION || currentState == ThermalSessionState.THERMAL_ESCALATED
 
-    /**
-     * Testing hook to inject state or reset between isolated test runs.
-     */
     @Synchronized
     fun resetForTesting(context: Context) {
         currentState = ThermalSessionState.NORMAL
         activeSnapshot = null
         isInitialized = false
+        protectionReadingCount = 0
+        escalationReadingCount = 0
+        recoveryReadingCount = 0
+        lastSpokenTemp = -1f
+        lastAnnouncementTime = 0L
         clearSession(context)
     }
 }

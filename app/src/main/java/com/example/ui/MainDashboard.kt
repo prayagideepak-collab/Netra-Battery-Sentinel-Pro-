@@ -89,8 +89,29 @@ fun LiveInformationBar(
         }
     }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val hasFineLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.ACCESS_FINE_LOCATION
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    val hasCoarseLocation = androidx.core.content.ContextCompat.checkSelfPermission(
+        context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    val hasLocationPermission = hasFineLocation || hasCoarseLocation
+
+    val festivalLocationInfo by com.example.engines.festival.FestivalContextEngine.currentLocationInfo.collectAsState()
+
+    val rawCity = festivalLocationInfo.city?.takeIf { it.isNotBlank() }
+        ?: weatherReport?.cityName?.takeIf { it.isNotBlank() && it != "Unknown" }
+
+    val locStatus = when {
+        rawCity != null -> rawCity
+        !hasLocationPermission -> "Location permission required"
+        else -> "Location unavailable"
+    }
+
     val tempText = weatherReport?.let { "${it.temp.toInt()}¬∞C" } ?: "---"
-    val locText = weatherReport?.cityName ?: "Unknown"
+    val locText = rawCity ?: locStatus
+    val displayDateLoc = if (rawCity != null) "$currentDayString, $rawCity\nTimezone: $tzName" else "$currentDayString ‚Ä¢ $locStatus\nTimezone: $tzName"
 
     Card(
         colors = CardDefaults.cardColors(
@@ -117,7 +138,7 @@ fun LiveInformationBar(
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                 )
                 Text(
-                    text = "$currentDayString, Timezone: $tzName",
+                    text = displayDateLoc,
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -10848,1178 +10869,23 @@ fun ChargingModuleView(
                     
                     IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
                         Icon(
-                            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = "Toggle Charging Module",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "State: ${if (state.isCharging) "Active Charge" else "Idle / Discharge"}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = chargeColor
-                        )
-                        Text(
-                            text = "Intake Source: ${state.chargingType}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Power: ${String.format(java.util.Locale.US, "%.2f", powerWatts)} W",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "${state.currentNow} mA",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = chargeColor
-                        )
-                        Text(
-                            text = "Voltage: ${String.format(java.util.Locale.US, "%.2f", state.voltage / 1000f)} V",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Last Update: < 300ms ago",
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
-
-                if (isExpanded) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Peak Capacity", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("${String.format(java.util.Locale.US, "%.2f", state.peakWatt)} W", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Speed Metric", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("${String.format(java.util.Locale.US, "%.2f", state.speed)} %/h", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Remaining", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("${state.timeTo100Min} mins", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Current Intake Trend (mA)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    InteractiveRealtimeGraph(
-                        points = chargingHistory,
-                        labelY = "mA",
-                        lineColor = chargeColor
-                    )
-                }
-            }
-            if (isRefreshing) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Charging Module Refreshing...",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun BluetoothModuleView(
-    viewModel: BatteryViewModel,
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    bluetoothHistory: List<Float>,
-    isRefreshing: Boolean = false
-) {
-    val btDevices by viewModel.connectedBluetoothDevices.collectAsStateWithLifecycle()
-    val isConnected = btDevices.isNotEmpty()
-    val btColor = if (isConnected) Color(0xFF2196F3) else Color(0xFF9E9E9E)
-    
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else btColor.copy(alpha = 0.2f)),
-        modifier = Modifier.fillMaxWidth().testTag("bluetooth_module_card")
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Bluetooth,
-                            contentDescription = "Bluetooth info",
-                            tint = btColor,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Bluetooth Core Signal Monitor",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    
-                    IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = "Toggle Bluetooth Module",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Status: ${if (isConnected) "Active Connection" else "Scanning..."}",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = btColor
-                        )
-                        Text(
-                            text = "Active Devices: ${btDevices.size}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Chip State: Healthy & Monitoring",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "${btDevices.size} Devs",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = btColor
-                        )
-                        Text(
-                            text = "Antenna: On",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Last Update: < 300ms ago",
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
-
-                if (isExpanded) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    if (isConnected) {
-                        Text(
-                            text = "Connected Accessories",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            btDevices.forEach { device ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
-                                        .padding(10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Filled.BluetoothConnected, "BT connected", tint = btColor, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(device.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                    val batteryText = if (device.batteryLevel >= 0) "${device.batteryLevel}%" else "N/A"
-                                    Text("Battery: $batteryText", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    } else {
-                        Text(
-                            text = "No Bluetooth accessories currently linked.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(vertical = 12.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Bluetooth Accessory Battery Level history",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    InteractiveRealtimeGraph(
-                        points = bluetoothHistory,
-                        labelY = "devices",
-                        lineColor = btColor
-                    )
-                }
-            }
-            if (isRefreshing) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Bluetooth Module Refreshing...",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun WeatherModuleView(
-    state: BatteryState,
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    weatherHistory: List<Float>,
-    isRefreshing: Boolean = false
-) {
-    val temp = state.outdoorTemp
-    val weatherColor = Color(0xFF00BCD4)
-    
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else weatherColor.copy(alpha = 0.2f)),
-        modifier = Modifier.fillMaxWidth().testTag("weather_module_card")
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Cloud,
-                            contentDescription = "Weather info",
-                            tint = weatherColor,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Atmospheric & Ambient Sentinel",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    
-                    IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = "Toggle Weather Module",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "State: Real-Time Sync",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = weatherColor
-                        )
-                        Text(
-                            text = "Source: Local GPS Weather Feed",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Thermal Calibration: Verified",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "${String.format(java.util.Locale.US, "%.1f", temp)}¬∞C",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = weatherColor
-                        )
-                        Text(
-                            text = "Loc: Active",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Last Update: < 300ms ago",
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
-
-                if (isExpanded) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Humidity", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("54 %", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Air Quality", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Optimal (AQI 32)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Wind Speed", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("4.2 km/h", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Ambient Thermal Curve (¬∞C)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    InteractiveRealtimeGraph(
-                        points = weatherHistory,
-                        labelY = "¬∞C",
-                        lineColor = weatherColor
-                    )
-                }
-            }
-            if (isRefreshing) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Weather Module Refreshing...",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun StorageModuleView(
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    storageHistory: List<Float>,
-    isRefreshing: Boolean = false
-) {
-    val storageColor = Color(0xFF9C27B0)
-    
-    // Calculate live storage stats
-    val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-    val totalBytes = stat.blockSizeLong * stat.blockCountLong
-    val availableBytes = stat.blockSizeLong * stat.availableBlocksLong
-    val usedBytes = totalBytes - availableBytes
-    
-    val totalGB = totalBytes / (1024f * 1024f * 1024f)
-    val freeGB = availableBytes / (1024f * 1024f * 1024f)
-    val usedGB = usedBytes / (1024f * 1024f * 1024f)
-    val usedPercent = (usedGB / totalGB) * 100f
-    
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else storageColor.copy(alpha = 0.2f)),
-        modifier = Modifier.fillMaxWidth().testTag("storage_module_card")
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Storage,
-                            contentDescription = "Storage info",
-                            tint = storageColor,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Solid-State Flash Integrity",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    
-                    IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = "Toggle Storage Module",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Capacity: ${String.format(java.util.Locale.US, "%.1f", totalGB)} GB",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = storageColor
-                        )
-                        Text(
-                            text = "Used Storage: ${String.format(java.util.Locale.US, "%.1f", usedGB)} GB",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Free Flash space: ${String.format(java.util.Locale.US, "%.1f", freeGB)} GB",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "${String.format(java.util.Locale.US, "%.1f", usedPercent)}%",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = storageColor
-                        )
-                        Text(
-                            text = "Health: Excellent",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Last Update: < 300ms ago",
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
-
-                if (isExpanded) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Write Wear", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("0.1 %", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Block Health", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Perfect", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Speed Class", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("UFS 3.1", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Live Flash Write Activity Curve (GB Used)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    InteractiveRealtimeGraph(
-                        points = storageHistory,
-                        labelY = "GB",
-                        lineColor = storageColor
-                    )
-                }
-            }
-            if (isRefreshing) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Storage Module Refreshing...",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun RamModuleView(
-    isExpanded: Boolean,
-    onToggleExpand: () -> Unit,
-    ramHistory: List<Float>,
-    isRefreshing: Boolean = false
-) {
-    val ramColor = Color(0xFFE91E63)
-    
-    // Get live memory statistics
-    val runtime = Runtime.getRuntime()
-    val maxMemory = runtime.maxMemory()
-    val totalMemory = runtime.totalMemory()
-    val freeMemory = runtime.freeMemory()
-    val allocatedMemory = totalMemory - freeMemory
-    
-    val maxMB = maxMemory / (1024f * 1024f)
-    val allocatedMB = allocatedMemory / (1024f * 1024f)
-    val freeMB = (maxMemory - allocatedMemory) / (1024f * 1024f)
-    val usagePercent = (allocatedMemory.toFloat() / maxMemory.toFloat()) * 100f
-    
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else ramColor.copy(alpha = 0.2f)),
-        modifier = Modifier.fillMaxWidth().testTag("ram_module_card")
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Memory,
-                            contentDescription = "RAM info",
-                            tint = ramColor,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Volatile Dynamic RAM Sentinel",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    
-                    IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = "Toggle RAM Module",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "App Max RAM: ${String.format(java.util.Locale.US, "%.1f", maxMB)} MB",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ramColor
-                        )
-                        Text(
-                            text = "Allocated RAM: ${String.format(java.util.Locale.US, "%.1f", allocatedMB)} MB",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Available JVM memory: ${String.format(java.util.Locale.US, "%.1f", freeMB)} MB",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "${String.format(java.util.Locale.US, "%.1f", usagePercent)}%",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace,
-                            color = ramColor
-                        )
-                        Text(
-                            text = "Pressure: Low",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Last Update: < 300ms ago",
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
-
-                if (isExpanded) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("GC Status", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Optimal", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Leaks Audit", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("0 Leaks", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .padding(8.dp)
-                        ) {
-                            Column {
-                                Text("Heap State", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Healthy", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Real-time Memory Pressure History (%)",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
-                    InteractiveRealtimeGraph(
-                        points = ramHistory,
-                        labelY = "%",
-                        lineColor = ramColor
-                    )
-                }
-            }
-            if (isRefreshing) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "RAM Module Refreshing...",
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun NetraWatchdogMonitorCard(
-    viewModel: com.example.viewmodel.BatteryViewModel,
-    modifier: Modifier = Modifier
-) {
-    val watchdogModules by viewModel.watchdogModules.collectAsStateWithLifecycle(initialValue = emptyMap())
-    var isExpanded by remember { mutableStateOf(false) }
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
-    val anyRefreshing = watchdogModules.values.any { it.moduleState == com.example.engines.ModuleState.Refreshing }
-    val allHealthy = watchdogModules.values.all { it.moduleState == com.example.engines.ModuleState.Monitoring || it.moduleState == com.example.engines.ModuleState.Offline }
-
-    val cardColor = if (anyRefreshing) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(
-            1.dp,
-            if (anyRefreshing) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-        ),
-        modifier = modifier.fillMaxWidth().testTag("watchdog_monitor_card")
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .graphicsLayer {
-                                scaleX = if (anyRefreshing) pulseScale else 1.0f
-                                scaleY = if (anyRefreshing) pulseScale else 1.0f
-                            }
-                            .background(
-                                color = if (anyRefreshing) Color(0xFFFFBC00) else if (allHealthy) Color(0xFF4CAF50) else Color(0xFFD32F2F),
-                                shape = CircleShape
-                            )
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Netra Core Health Watchdog",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                IconButton(onClick = { isExpanded = !isExpanded }, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                        contentDescription = "Toggle Watchdog Monitor",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = if (anyRefreshing) {
-                    "ACTIVE RECOVERY: Watchdog restoring stream integrity..."
-                } else if (allHealthy) {
-                    "All registered sensor streams operating normally."
-                } else {
-                    "Subsystem fault detected. Triggering recovery..."
-                },
-                fontSize = 11.sp,
-                color = if (anyRefreshing) Color(0xFFFF9800) else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    for ((name, meta) in watchdogModules) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    shape = RoundedCornerShape(10.dp)
-                                )
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = name,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "#${meta.sequenceNumber}",
-                                        fontSize = 9.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                    )
-                                }
-                                Text(
-                                    text = "Updated: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(meta.lastUpdateTimestamp))}",
-                                    fontSize = 9.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Status badge
-                                val badgeColor = when (meta.moduleState) {
-                                    com.example.engines.ModuleState.Monitoring -> Color(0xFF4CAF50)
-                                    com.example.engines.ModuleState.Refreshing -> Color(0xFFFFBC00)
-                                    com.example.engines.ModuleState.Recovery -> Color(0xFF2196F3)
-                                    com.example.engines.ModuleState.Error -> Color(0xFFD32F2F)
-                                    else -> Color.Gray
-                                }
-
-                                Row(
-                                    modifier = Modifier
-                                        .background(badgeColor.copy(alpha = 0.15f), RoundedCornerShape(100.dp))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    if (meta.moduleState == com.example.engines.ModuleState.Refreshing) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(10.dp),
-                                            strokeWidth = 1.5.dp,
-                                            color = badgeColor
-                                        )
-                                    } else {
-                                        Box(modifier = Modifier.size(6.dp).background(badgeColor, CircleShape))
-                                    }
-                                    Text(
-                                        text = meta.moduleState.name,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = badgeColor
-                                    )
-                                }
-
-                                // Interactive simulation test trigger
-                                Button(
-                                    onClick = { viewModel.simulateWatchdogStale(name) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(24.dp)
-                                ) {
-                                    Text("Freeze", fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TimeSelectDropdown(
-    label: String,
-    selectedTime: String,
-    onTimeSelected: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val options = remember {
-        val list = mutableListOf<String>()
-        val cal = java.util.Calendar.getInstance()
-        val sdf = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.US)
-        for (h in 0..23) {
-            for (m in listOf(0, 30)) {
-                cal.set(java.util.Calendar.HOUR_OF_DAY, h)
-                cal.set(java.util.Calendar.MINUTE, m)
-                list.add(sdf.format(cal.time))
-            }
-        }
-        list
-    }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-        modifier = modifier
-    ) {
-        OutlinedTextField(
-            value = selectedTime,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            colors = OutlinedTextFieldDefaults.colors(),
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            options.forEach { option ->
-                DropdownMenuItem(
-                    text = { Text(option) },
-                    onClick = {
-                        onTimeSelected(option)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-data class TelemetrySample(
-    val timestamp: Long,
-    val battery: Float,
-    val temperature: Float,
-    val voltage: Float,
-    val current: Float
-)
-
-@Composable
-fun MetricSummaryCard(
-    title: String,
-    value: String,
-    sub: String,
-    trend: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f)),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.3f)),
-        modifier = modifier.height(98.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            Text(text = title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Text(text = trend, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = color, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            }
-        }
-    }
-}
-
-@Composable
-fun LegendItem(label: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .background(color, CircleShape)
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = color)
-    }
-}
+                            imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.FilledxúÏ]{S€Jñˇ?ü¢óùLŸ[D1è∞	uoj¿@¬Ñ&dÔ_©Fj€=—√+µﬂﬂi>√|≤=ßªı∞ﬁ≤†æU7XÍÁÈ”Á˘ìdﬁN®kùz>[AJäÈπÇπ‚Ä¶œ'Ç{.˘ù¨]x£ëÕHL˝wG‰‘≥¶6[+ÔJpW@„S*òœ©}1f3Lœˆ¸Å)ˇˆ‹¡‘Rì]R®‡ä¬ﬁ∫πwÓ2WÔ^d.&–øﬂq<ã9Ûq>˙OcÃ¯h,:õÜ5Èv≥MœΩõNÓ¿yùπmü“€Ø‹„N7ü0cœÁ}©ΩÁ˚‘$Öø9ﬂ}&nsÛ{πfæ‡&ÙaÛëˆ˛mÙ·Ãø‘uÏY¶ã.˘ë€mﬂ≥ßé€âz/úaÄ3¥ˆgùmI∑ÇÓ∞\∞[ëO¡∞®Å¸5¿$ª‰/?¯êt¸a ‰∂.Y€3ø÷¸«÷≥F÷é-`…◊‰Ä¶∫~W¡êC†˝Äˇ…`ƒç-XGuÌØíE†˛QÙ√ÿ˜l´ÍèC#5≠>˛j»⁄XÍSÔXÍ;#oÍõíääÇ¶¶ﬂ≈l¬öêf≥í4·⁄—n∂˛œﬁÛq›·√zç°Á;Tt˛AØ©1‹6N<‡hf|¨ìµó∆ÊpmùL∞ÕW*D–Ω#_urƒ}ÇR&WB∫÷:yòcqÊ‘˜aåOﬁÕqˆgÒSkSÛ{u”#Íp{¶õ™∆©Ázíø÷©øÙlAG¨!ﬂ´∏VmAznÙzΩ!ÅÀª∞ÒG†©Nh »óâ%ïÃod´◊sBG^˝5ø˚	KÜõìYá⁄ì1Öv=c{Xº÷%, T©<Pˆ≥är;iGŸIy≠¯5∑†y"§Wﬂ{3,Ë|	K°áeQSKs.í¢oqÜπ]ïâ÷}Ô∂ú√sÊ_Zãq£©V¬oQ›+õ#ﬂõ∫VßxSÉRæﬁv◊a¶»~}œwô?”	ÎlÙäjnjY ﬂJhà•åéXîz¨®ÑE ïµœå~'}
+˚«≈gZ,p‡´ó™Ü^@†O`∂hÕ(c&+≠K≠ŸÚyeÖLıùño…CÒÌ`¬òENpê˘À≥mÄìû}˘z‹rÌsÊ⁄sÊPÓ¬∞˜Õ≤äwÿÖ∂)w¡%·n¿ÏX‡‚-g•ïÃ°±‹WŒ—QÖ¯aëé≥◊-±ñãï‘˜)™9`‚sá˙≥‚.Úh≤˙ï'ÑÁ¿ùùb+-˜Í1€®Nù3j#}Èd\LÂâ«]Ñn"˛ë¬+õ∏MØò˝ÓL©´lsW9ù5\–ÏbÊπp˛ór ŒŸ–g¡X∆„≤ß∫Pt6ôhs¸ô"˚!_täœT#Iôëo—’»ß§ó≈VõFTÎ¯%√}åjŸ%LRœ)ò|Ÿ‰"∏oNmÍˆΩÏpÏZ0pl_Oü…‚]¨goÀïV˝@*uAbv6£F`πHr+ú@((∑APÆ LêˇK˝u˜‘œﬂ˙û3Òze≥√©KˆÌ)û'∆äÄóúi∑˙˛ÇkÃﬁ%˚‡Å0v^Q´äÉP√ÛlFuf√sU^I›ﬁ%ù.yıû|qπP˜Ø¬!µå‹%'«oG∂G≈˚∞Ôx#£ﬁÅLCjÏE»ÿ◊‘&W‚Ä]sì‰jœˆ¬uô)¿G”’pól∏≥»‰ƒW.∆'|»ÃôiáÇ	ªÂA?ÏÜç1x…áŒDÃïØD(°ïLçövâº—È›mnº€9⁄Í™$G|˘›!˛ß˙íˇÎSﬂäy_ÚÍº|¿ÜtjX¸ê]îl`b1ø_…ìZl&DdÄ&$¥…±+7•]WΩÚ|KÂ}˘∏ﬁw∞>°“zé&©<äöpiAæ9'«´c9Ü`Å∏†£ŒZƒZﬂ…ŒﬂêRkä∫Iqàz≠∫ﬂ¥ ’íøÃ‰–vZé‰}^iG\m≥ÆÀ¥’1pyπ> ¶±K8tÚ`˝¿8"2Àà$¿"Ú®1·Ó∞*∞¨3„ö´ÀÎÊÌzÄ∆—ÊfπÉ∂à÷Ωë|¥2•$#ÿRêÇßHxœˇiJ7©-ﬂ¨2nø¥⁄≈íÔG SÌO¡	q;û€∑π˘f4Ø◊K8·mUäÆÈπHÁÊŒâ∫|∆†Œ97óƒôƒ|”Mûúƒp†…4ë&sX2QóÄ#C†…¿§Æ´=Ö_c¢u»j†>—4a¥iãƒãÌ\@O\“Û	—¯§è„œ»_C&ñèiÌè:í‚9d«‡âAGÓÂ0£ﬁuÈ.9s[»GŸö[»«£Ö|dt˚*$PÁŸ3A
+ +YT}Ñ<ŒX+GRë,é$7∂˚*›,±Zz˛!5«‰±‰ÚÍ}iK,•‡†dY$ıñîÕ^ø›
+“¡õK¶É£πDÅ´TºØ¨¨∆Ió%˝ít©b∞∞¨6Rï.“CœGEÇgù¨Ì_ê(bΩ∂û$á $y^Y6Fî.RÃ™ci∏‘aÎY√xâÏzXä≥Ï…"#Ò*Sq°d;Í=9}„Ñ]3õºá‘E€3ÁÊ›À–=¸Ùzo≠÷¿
+s†ì$‡F%&ë7¯∏ár5Ü)(¨BΩ~ÚakX¢¡‚`Z€‹˝„ÅÕ÷¥Ñ›VH√2≠
+u
+ö+÷ƒâƒª⁄C≥0H‘Ò´¥]ã…î%p#È§h‡à_e∆j=RÊÖ∂»ë9RcrO9íNF¥–ë‹_%–ëØåä1Û”¿ë@UµŒê!÷%#7j†U¿Es&pC¡CΩ©∞<œøÄkQ=V(4c†FØ∑ﬂ?ÿ~¶@ç$UVá÷–Ω∂Xç´°ù„æÌM+h^ÜYÀ¢(ç$K?]®∆ûpº`Î‰&˘+ŸsÆ8ÓÌ ˛¢»n±qi±sXç@µHç''Ô©÷!∫«Ø.¿?&Éôk˛b‡ã§jX@∫7 Ü~µá|êé|¯<àé›√@pm™¸Ñf+á·}÷‹ß6øÚ)
+ü]ºåGÏë-¸c/Í=ÿπÅv¢„‘Ω˚˜ø˙6ÁÌ#¿f‹€YöÓπjeknè†—æì#U⁄ßƒÀãJù~ú:‹∫˜◊qºŸ&/€∑<gæ€„>˘˚,–˚fΩ3∂—˙ÌÏ˝˝òlmv[6|Œl¯ïªëÔwπ_.‹66…wÁ¡_—ÚÄXá0y£Sˇöëx9Ì[1≤e	t√|Ø∂°‹”L‚*=∏‹–Çj,@.‚âÄÊ£˜-¥!˜W	¥a [NG,mX¡®˛VÅ`–]e
+Ô˙õˇΩﬂK ^ø∆*Ú≥` 1A≥È∂˛$z§∏◊0qﬂ„ñ·ÈèÇN‚ °{Õ}Où‘T–ÓÀ\’¨”›"∆Ò˚0ÑÁw&X†°∆ïÌôﬂqSO<wD˛+q±BM‡’®5Ω¶‹∆ù®Ó!ÆäwÉπn¶Tâ	ΩJıì+ö˘á˝˘&Ø	êõ€CuÓﬂx¡∞sL∂JÕΩ∫%ŒR∂åß[Ø—gÊõJÏutØ√Ÿweãﬁ0^⁄sÇ™$œ«Í†*∫◊™“BUtñ]´àERÏ∫i∞Jí©ü.Xe‡Ÿ‹z%3ƒ‰»¶¡X∫#_∆g~í—“"Ur˚DHï4µHï''Ó©æ$º˛óT¢\aw‰√˛/ÜkIjëA}“}ã4<ó…ßåŸ¶‘˚` Õ(tÉ÷qíwRI9èêJœ,ìp–∫w/übÊﬁ§àz-œ.9º5òÆhq3eknq3-n&]Z‹ÃìNÉg,ë˙˛˝&é{∆Fùëuü-Î…Äª~qﬁ˝2ÿUCfÊøY£eøg¬~ÍkH}üÇ˚Âæ/G≤el<_»Ã	Êï„™‘èÑ¥s1¡3ˆ	∫ˇ-Ä&[ñ –Ã'êÎ hJ#I¸L•?◊‚gZ¸Lç»E<¸Ã|N°≈œ‰˛*¡œúSgeÿü:´¿Õ@7YÃÃ·ªç√ù≠yÃÃ&Z∆aæ¸
+ë&0,7cƒå?uQx# A˝Öò˝g‚ª0Ω=U}¸61¢kâz2eê©ô∏ö®ãëﬂL’¯b¢&à Œ≥¢Í…q^%zäóŒ)ÒÏ”àîº1$˙%5bq;966Èƒ£ºJ∑Ôñt0‡x&00©¶@<…%Ï#"æ˙º!2·QX<zl°1-4FüC∑Er˙Á{ß`1!#?]HÃ•gÉˆ‰`ÊRáõ	‘ææ%[ZPÃ(Ÿ§ƒ<9!ˇ†ÄòΩ…¯‰y´!\Aöî›;r˙´!bB≤Äh@∑–6]Är	ª)˝~¥GC:Ö‡yÚ?óß⁄˚Z Û()ı\p1±◊ˆÙÄ1˜"L>cXmÍÀóF›¥Äò≤5∑Äòì.- Ê)ßÖ?Ùâ˙‰ÉºŒ£Ö$<gﬁ;aÙ{@ˆ¶˜å∆"rËñ˚û3˜}dTŒÙ~ôO:ı˘‚a‰ãle2Pß±BùË§%Èºl±0Ÿ≤&N◊¡¡îyôIL©˜÷B`ZLç»E<LúAh·/πøJ‡/üòÈW<õñ7“ﬂè◊ú› eôΩkvvKùâÕºÏ‡eC:Á2¨ßn˙n¥ÁIëÑ∫‹D#„ˆ‰jèi§n"ÅmfäΩ@Z_πü!3g¶Õ:f;qIÌ)“ì91;•ìN7b¯	X„√69W0≥ƒô
+§áÏılÿëÄún®©qñ‹bˇÏé\¿u˛*Ï‡8s≥#E:rÊd
+]≠≈X˘{Ä¡FúB∂[É∫¿7Ç)ÏG¥©≈ıåw√ò≥ıGLÑ˜6åçƒ=’t<ò0S}zƒs6aT.z˛ÑEıÇÉ)£Œ€^où0¿â¬SBq6€ª9vÂ’î∞ıeœ∏àâ~ÁƒXgUÕÊ©%©£æfŸçwÄ∫≥¯hC›4k\„Ú ﬂˆìC!<‘˚~ˇ}éyô;]ßq#—˜]<¶mkõ±d@€^h@}“p¿˛sÅˆg√!ZI&ç ?:•;G≤§®îZ˝1îVÆo¥gì˘Íf•û÷H˛≥,Ä)∫∑J†“K‘R∆PJQ¥íéUXI√EbôoÂ√†ú¸hc‚ÉVöüø9äã¿P√ör„¢ãƒCóœr/ë·.k≠æTÖhÅ–üYÓï˙Ú≤‚Ωn'tÜ˙Ø“P$ˇoæXIh4…ŒÜÜ*Vv¯«ä:,ˇûp“ô®úóY,>c Ó——~ø◊Î™Ÿ…öëûHV€ÓÔΩ	´≈ó∂6è6èj|Ω<hh§É‘«_•möx¥ï†∞≤RΩ`É¥+a›]êƒ!°ë˘S#Â∞e·_yæuÊR.ºÎG“˙¸ù¸G‚◊›¬`Ør†◊}Çº øœ•7ûh£ßÑVÒ™ÅÃ˝¨ˆTwrÚ˘«@ƒüs/¥øíemØq|yHŒ˚góáÁÏ∆‘Çñ⁄BÑœ®∆ª~√∫∂Ÿ%Ê§¢a¡nıŸà@h‡¡Äπ∞â( ﬁÑ·áé`h°†¡ä,`0Ω
+f–ªC§AG,&ÄÅù»ÖœG#&Ê3”MZ∞†,õT«kJwo#	æ Ø•∏°:æxÑ˜ßeøó»|7G˜iïR¿/CXYß„RáÅ4dÇvÅ€”>WY(´4èe°|ŒºiZ]øâ≠Å•zG´@µ*ÒéjåXdìbÉ]!÷êêQ‡ €yo,Ø4≥ÆÀ˚jÍ>·j•¡Úç™(/X’	ñ’>ë,’!’d—∫L ⁄ç™¶{©ÆMñU ¸ì•öÔ±T‘%…ªtYhì÷˛Û/?Pn˚ø)sMˆiä±…ªäx≤4Ç£%ÀÚ–¥75ÊX™kï;ÉXÍì7zE†DˆYàÔïêQºn8∆Ê0V´–§k?Ó:ŒÆ|ÀC≤¥õEùb„é‹4õBçÇﬂuÄYÍÓ›B˚∂¸ûÌ‘ÿ≥™‘yÈÌJïéeïöÀä@wa©#ò_ø÷H0rE≠QµT¬XØ¨ÜCo∆Ã%äëQ‰∫:°A§˙’˚l|c%c$¬ÔscËPÀä∆Pæ∆¸õÔvé∂V3¬°Ô√~ÃuØ£=µ∫óﬁHÿ⁄¯‡”Ï≥6ÈRqÇ∞‘:EX1ê√í4|c÷ÃÀ‡ïjñ¢ÒrMÕ∑iKsª⁄“À™ÂñF≤dªû^ÛP£;öÕÚ`uG¬Rå#®›ñ¬(ÿFØ˛FÜ%êYÈπ…¨ËõLFß™Ñ*2fË⁄ÕÎqri %Ø=ò.â$-Ã¸É∏û"◊<f’ÜñÖl’4cÕ=åÖÏ‘’∏&≤E”µé©ê £ëÄ;¯≈å∂b^èY´ÏFGßkÕ;¬éëzd+am&√7›º∏]^—!„œJíCˇ˙/	d*$˚f}Å•ó’™£Ûï¸©SÃvøˆÀ4
+í¿uc6	"’¨+.3⁄©O˛í‡‚ÊjuûB˘‚€ ˇÃE/éÒ≈R.õ£ÄÀØ‰B∑^º¯€ŸDªù√€	∞⁄‘Ybko¬wwM|Õ`7ÚBØr¿;u‡{Àª—á_"ovâz,RÌg ´1õÃﬂÒ‹∏ÙÜ;ÍfÍHu°_>aÕ¿X™ôM<ô^
+ ¨`õRÀ®~5Lg√ﬂ‘\ﬂ'Ç∏
+2É¬$ˆ»˚ ≈\ã˙¯é§c¸p◊d©&Å5õƒ∆„]«!¥ u&#ﬁcs˜cs+ÕÂÚ6Ê|‰zÄΩu≤’ÀçB◊F¿íëÖhœæú;;˙v∞˜«:gπº§ÈÈÒß/áÎƒ…∂¬ ≠;@å0¨Å=!2:e^§9lÆπZ˛ÏÏÃ
+YÛîπ”9`ãÛ¶·ü±ÏÒ‹0È“£U-U¢IÖîÉêë˜íd=õ
+ÑVY(Oé8≥S±¸k¥KîyQËπRá≈ÛIiDüQÎÃïO
+öjÇ·~(y&ft™)á9é0O+ÎÊê0Rtâ ùZfzè4fÜ1:K©Õî»ìı •¶{Æ	Íº”- ßƒÂ¨cû˙•º†à¿á¡9B•$ò„)OÃò>PZº [Rsç’êrŸƒ\bö«Ç9˘fÑ∂zıÜ™ﬁ
+≠§ÑπU®RÊqÿcaıÙ‚k*§Ús,íE%RÂ¿⁄lê∆¬ü§sŸâƒµö¯x®JTK"áwâƒ∫∆◊Åé2˚,O›ªˆl!ø”í∫nN}|Æ@_—Õ¬úOan‹LâoåáÇ;•Ê‰˘NÈƒÈ’¸£YÛó‰âÿ%âw<’”ÑKc!s#-sœ@î%ˇ6Î@#’;‹rG⁄*zõì2ˆﬁ≈¡“öB-,‘√"Ûè™’yÉD2ßó>‰Ú$Ís)Y†È3aÒsj¶r∞z{Ç—læN0–8¥Ω}™Ùá…å)WÜC f`‡LŒtm„–∂˘$‡A∑p≤í9◊3‘ùlçhˇO] ”≈Ñ&7	ƒ≈Jl¸©[ë9(“xMßÃ‚SÁ>œA≠«YNÿ÷!ïÒºs3'†√\.”ûAÔ÷	°´`]~Ê(Ω3≥Åª{©2Ôº=XOÓ∏§O¡óªÂ›h/˛  ˇˇ ﬂ“ò

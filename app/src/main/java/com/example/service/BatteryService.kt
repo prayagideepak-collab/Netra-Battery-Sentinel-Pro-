@@ -1041,6 +1041,22 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun startFullBatteryAlarm(settings: SettingsEntity, percentage: Int) {
+        // Evaluate Nighttime Deep Sleep policy: Suppress non-critical full battery alarm during night sleep window (e.g. 04:00 AM)
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
+            Log.i(TAG, "Full battery alarm suppressed by Nighttime Deep Sleep policy at $percentage%")
+            stopFullBatteryAlarm()
+            try {
+                repository?.logBatteryEventSync(
+                    eventType = "BATTERY_ALERT_SUPPRESSED_NIGHT_SLEEP",
+                    title = "Full Battery Alert Suppressed",
+                    details = "Full battery alarm at $percentage% suppressed during Nighttime Deep Sleep window.",
+                    category = "AUTOMATION",
+                    source = "DeepSleepEngine"
+                )
+            } catch (ignored: Exception) {}
+            return
+        }
+
         // Continuous voice announcement repeating every 5 seconds while charging & at/above threshold
         if (fullBatteryAnnouncementJob == null || fullBatteryAnnouncementJob?.isActive != true) {
             fullBatteryAnnouncementJob?.cancel()
@@ -1048,6 +1064,9 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                 while (isActive) {
                     val isChargingNow = (getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)?.isCharging ?: false
                     if (!isChargingNow) {
+                        break
+                    }
+                    if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
                         break
                     }
                     try {
@@ -1179,10 +1198,10 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             it.copy(
                 isCriticalThermalEpisodeActive = isProtected,
                 thermalStateName = when (thermalState) {
-                    com.example.engines.thermal.ThermalSessionState.PROTECTED -> "Thermal Protection Active (>=${currentSettings.tempAlertThreshold.toInt()}°C)"
-                    com.example.engines.thermal.ThermalSessionState.PROTECTION_ENTERING -> "Engaging Protection"
-                    com.example.engines.thermal.ThermalSessionState.RESTORING, com.example.engines.thermal.ThermalSessionState.RECOVERY_PENDING -> "Restoring State (<=40°C)"
-                    com.example.engines.thermal.ThermalSessionState.NORMAL -> "Normal (<40°C)"
+                    com.example.engines.thermal.ThermalSessionState.THERMAL_ESCALATED -> "Thermal Escalation (>=45°C)"
+                    com.example.engines.thermal.ThermalSessionState.THERMAL_PROTECTION -> "Thermal Protection Active (>=43°C)"
+                    com.example.engines.thermal.ThermalSessionState.RESTORING -> "Restoring State (<=40°C)"
+                    com.example.engines.thermal.ThermalSessionState.RESTORED, com.example.engines.thermal.ThermalSessionState.NORMAL -> "Normal (<40°C)"
                 },
                 isHeatProtocolActive = isProtected
             ) 
@@ -3461,20 +3480,23 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun speakReal(announcement: Announcement, settings: SettingsEntity) {
-        // CRITICAL NETRA AUDIO RULE: NETRA Battery Sentinel Pro must NEVER announce battery information by voice.
-        val textLower = announcement.text.lowercase()
-        if (textLower.contains("battery") || textLower.contains("charging") || textLower.contains("charger") ||
-            textLower.contains("percent") || textLower.contains("full") || textLower.contains("connected") ||
-            textLower.contains("disconnected") || textLower.contains("drain") || textLower.contains("c ") ||
-            textLower.contains("d ") || textLower.contains("100") || textLower.contains("telemetry")) {
-            return
-        }
         val isThermalSafety = announcement.category == AnnouncementCategory.THERMAL_EMERGENCY ||
                               announcement.category == AnnouncementCategory.SAFETY_EMERGENCY ||
                               announcement.priority == Priority.EMERGENCY_SAFETY ||
                               announcement.text.contains("temperature", ignoreCase = true) ||
                               announcement.text.contains("overheat", ignoreCase = true) ||
                               announcement.text.contains("heat", ignoreCase = true)
+
+        // CRITICAL NETRA AUDIO RULE: Non-critical battery voice announcements are suppressed.
+        if (!isThermalSafety) {
+            val textLower = announcement.text.lowercase()
+            if (textLower.contains("battery") || textLower.contains("charging") || textLower.contains("charger") ||
+                textLower.contains("percent") || textLower.contains("full") || textLower.contains("connected") ||
+                textLower.contains("disconnected") || textLower.contains("drain") || textLower.contains("c ") ||
+                textLower.contains("d ") || textLower.contains("100") || textLower.contains("telemetry")) {
+                return
+            }
+        }
 
         if (com.example.engines.deepsleep.DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety, settings)) {
             Log.d(TAG, "Announcement suppressed by DeepSleepEngine policy: ${announcement.text}")

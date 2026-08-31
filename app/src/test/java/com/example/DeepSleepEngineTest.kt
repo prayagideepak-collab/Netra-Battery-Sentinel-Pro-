@@ -21,61 +21,76 @@ class DeepSleepEngineTest {
     }
 
     @Test
-    fun testDefaultNightWindowBoundaries() {
+    fun testDefaultNightWindowBoundaries_8PM_to_7AM() {
         val settings = SettingsEntity(
             deepSleepModeEnabled = true,
-            deepSleepStartTime = "09:00 PM",
-            deepSleepEndTime = "06:00 AM"
+            deepSleepStartTime = "08:00 PM",
+            deepSleepEndTime = "07:00 AM"
         )
 
-        // A & B: 20:59 outside Night Mode
-        val t2059 = getTimestampForTime(20, 59)
-        assertFalse("20:59 should be outside Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t2059))
+        // 19:59 outside Night Mode (OFF)
+        val t1959 = getTimestampForTime(19, 59)
+        assertFalse("19:59 should be outside Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t1959))
 
-        // C: 21:00 Night Mode starts
+        // 20:00 Night Mode starts (ON)
+        val t2000 = getTimestampForTime(20, 0)
+        assertTrue("20:00 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t2000))
+
+        // 21:00 Night Mode active (ON)
         val t2100 = getTimestampForTime(21, 0)
         assertTrue("21:00 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t2100))
 
-        // D: 23:59 Night Mode active
+        // 23:59 Night Mode active (ON)
         val t2359 = getTimestampForTime(23, 59)
         assertTrue("23:59 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t2359))
 
-        // E: 00:00 Night Mode active
+        // 00:00 Night Mode active (ON)
         val t0000 = getTimestampForTime(0, 0)
         assertTrue("00:00 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0000))
 
-        // F: 05:59 Night Mode active
-        val t0559 = getTimestampForTime(5, 59)
-        assertTrue("05:59 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0559))
+        // 01:00 Night Mode active (ON)
+        val t0100 = getTimestampForTime(1, 0)
+        assertTrue("01:00 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0100))
 
-        // G: 06:00 Night Mode ends
-        val t0600 = getTimestampForTime(6, 0)
-        assertFalse("06:00 should be outside Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0600))
+        // 04:00 Night Mode active (ON - 4 AM full battery alarm bug suppressed)
+        val t0400 = getTimestampForTime(4, 0)
+        assertTrue("04:00 should be active Night Mode (Suppresses 4 AM alarm)", DeepSleepEngine.isDeepSleepActive(settings, t0400))
+
+        // 06:59 Night Mode active (ON)
+        val t0659 = getTimestampForTime(6, 59)
+        assertTrue("06:59 should be active Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0659))
+
+        // 07:00 Night Mode ends (OFF)
+        val t0700 = getTimestampForTime(7, 0)
+        assertFalse("07:00 should be outside Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0700))
+
+        // 07:01 outside Night Mode (OFF)
+        val t0701 = getTimestampForTime(7, 1)
+        assertFalse("07:01 should be outside Night Mode", DeepSleepEngine.isDeepSleepActive(settings, t0701))
     }
 
     @Test
     fun testAnnouncementSuppressionPolicy() {
         val settings = SettingsEntity(
             deepSleepModeEnabled = true,
-            deepSleepStartTime = "09:00 PM",
-            deepSleepEndTime = "06:00 AM"
+            deepSleepStartTime = "08:00 PM",
+            deepSleepEndTime = "07:00 AM"
         )
-        val activeTime = getTimestampForTime(23, 0) // 11:00 PM (Active)
+        val activeTime = getTimestampForTime(4, 0) // 04:00 AM (Active)
         val inactiveTime = getTimestampForTime(12, 0) // 12:00 PM (Inactive)
 
-        // H: Normal announcement outside Night Mode -> Not suppressed
+        // Normal announcement outside Night Mode -> Not suppressed
         assertFalse(DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety = false, settings = settings, currentTimeMillis = inactiveTime))
 
-        // I, J, K, L, M: Normal / Battery Full / Charging / Discharging / Charging-type suppressed inside Night Mode
-        assertTrue("Normal announcement suppressed in night mode", DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety = false, settings = settings, currentTimeMillis = activeTime))
+        // Non-critical announcements / alarms suppressed inside Night Mode at 4 AM
+        assertTrue("Normal / Full battery alarm suppressed at 4 AM", DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety = false, settings = settings, currentTimeMillis = activeTime))
 
-        // N & O: Critical thermal warning allowed inside Night Mode and cannot be disabled
+        // Critical thermal warning allowed inside Night Mode and CANNOT be suppressed
         assertFalse("Thermal safety announcement must NEVER be suppressed", DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety = true, settings = settings, currentTimeMillis = activeTime))
     }
 
     @Test
     fun testUserPreferencesAndOverrides() {
-        // P & Q: User toggles normal announcement settings
         val settingsEnabled = SettingsEntity(voiceAssistantEnabled = true, deepSleepModeEnabled = true)
         val settingsDisabled = SettingsEntity(voiceAssistantEnabled = false, deepSleepModeEnabled = true)
 
@@ -87,7 +102,6 @@ class DeepSleepEngineTest {
 
     @Test
     fun testCustomTimeWindows() {
-        // R & S: User changes Night start and end times (e.g. 10:00 PM to 07:00 AM)
         val settings = SettingsEntity(
             deepSleepModeEnabled = true,
             deepSleepStartTime = "10:00 PM",
@@ -102,7 +116,6 @@ class DeepSleepEngineTest {
 
     @Test
     fun testSameDayWindowCalculation() {
-        // U: Same-day window (e.g., 01:00 PM to 05:00 PM)
         val settings = SettingsEntity(
             deepSleepModeEnabled = true,
             deepSleepStartTime = "01:00 PM",
@@ -116,16 +129,19 @@ class DeepSleepEngineTest {
     }
 
     @Test
-    fun testRestartAndPersistenceStateRestoration() {
-        // V, W, X, Y: Simulate app restart by re-evaluating persisted settings against current time
-        val persistedSettings = SettingsEntity(
+    fun testStatusMethod() {
+        val settings = SettingsEntity(
             deepSleepModeEnabled = true,
-            deepSleepStartTime = "09:00 PM",
-            deepSleepEndTime = "06:00 AM"
+            deepSleepStartTime = "08:00 PM",
+            deepSleepEndTime = "07:00 AM"
         )
-        // If restarted at 11 PM -> active
-        assertTrue(DeepSleepEngine.isDeepSleepActive(persistedSettings, getTimestampForTime(23, 0)))
-        // If restarted at 2 PM -> inactive
-        assertFalse(DeepSleepEngine.isDeepSleepActive(persistedSettings, getTimestampForTime(14, 0)))
+        val activeTime = getTimestampForTime(23, 0)
+        val inactiveTime = getTimestampForTime(14, 0)
+
+        assertEquals(DeepSleepEngine.DeepSleepStatus.ACTIVE, DeepSleepEngine.getStatus(settings, activeTime))
+        assertEquals(DeepSleepEngine.DeepSleepStatus.SCHEDULED, DeepSleepEngine.getStatus(settings, inactiveTime))
+
+        val disabledSettings = settings.copy(deepSleepModeEnabled = false)
+        assertEquals(DeepSleepEngine.DeepSleepStatus.INACTIVE, DeepSleepEngine.getStatus(disabledSettings, activeTime))
     }
 }

@@ -1059,8 +1059,8 @@ fun BatteryWearEstimatorCard(
 @Composable
 fun NighttimeDeepSleepCard(
     isDeepSleepEnabled: Boolean,
-    startTime: String = "09:00 PM",
-    endTime: String = "06:00 AM",
+    startTime: String = "08:00 PM",
+    endTime: String = "07:00 AM",
     onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {

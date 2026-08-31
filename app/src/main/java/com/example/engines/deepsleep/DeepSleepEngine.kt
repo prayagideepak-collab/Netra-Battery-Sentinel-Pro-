@@ -1,6 +1,7 @@
 package com.example.engines.deepsleep
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.example.data.SettingsEntity
 import java.util.Calendar
@@ -9,22 +10,32 @@ import java.util.Locale
 /**
  * Netra Deep Sleep Mode Engine
  *
- * Implements the authoritative behavior-policy mode for Deep Sleep:
- * - Default Schedule: 9:00 PM (21:00) -> 6:00 AM (06:00) (User configurable in Settings -> Deep Sleep)
+ * Implements authoritative behavior-policy mode for Nighttime Deep Sleep:
+ * - Default Schedule: 8:00 PM (20:00) -> 7:00 AM (07:00) (Configurable in Settings)
  *
  * Suppression Policy when Deep Sleep is ACTIVE:
  * 🔴 Standard Voice Announcements: OFF (Suppressed)
- * 🔴 Full-charge Voice Announcement: OFF (Suppressed)
+ * 🔴 Full-battery Alarm (Sound & Speech): OFF (Suppressed at 04:00 AM and throughout night window)
  * 🔴 Charger Connect / Disconnect Spoken Alerts: OFF (Suppressed)
  * 🔴 General Battery Milestone Alerts: OFF (Suppressed)
  * 🔴 Other Configurable Non-Critical Announcements: OFF (Suppressed)
- * 🟢 Thermal Safety Warnings: PERMANENT ON 🔒 (Never suppressed, permanently active)
- * 🟢 Temperature Safety Limit Violations: ALWAYS ALLOWED 🔒
- * 🟢 Telemetry & Data Collection: ACTIVE
- * 🟢 Critical Safety Processing: ACTIVE
+ * 🟢 Thermal Safety Warnings (>= 45°C): PERMANENT ON 🔒 (Never suppressed under any condition)
+ * 🟢 Thermal Protection Mode (>= 43°C): ALWAYS OPERATIONAL 🔒
+ * 🟢 Safe Background Telemetry & Data Collection: ACTIVE
  */
 object DeepSleepEngine {
     private const val TAG = "DeepSleepEngine"
+    private const val PREFS_NAME = "netra_deep_sleep_state_prefs"
+    private const val KEY_IS_ACTIVE = "deep_sleep_is_active"
+    private const val KEY_ACTIVATION_TIMESTAMP = "deep_sleep_activation_timestamp"
+    private const val KEY_DEACTIVATION_TIMESTAMP = "deep_sleep_deactivation_timestamp"
+    private const val KEY_LAST_STATE_CHANGE = "deep_sleep_last_state_change"
+
+    enum class DeepSleepStatus {
+        ACTIVE,
+        SCHEDULED,
+        INACTIVE
+    }
 
     /**
      * Checks if Deep Sleep Mode is currently active based on user settings and system time.
@@ -39,7 +50,8 @@ object DeepSleepEngine {
 
     /**
      * Helper to evaluate whether a given timestamp falls within [startTimeStr, endTimeStr].
-     * Supports standard formats e.g., "09:00 PM", "9:00 PM", "21:00", "06:00 AM".
+     * Supports standard formats e.g., "08:00 PM", "8:00 PM", "20:00", "07:00 AM", "7:00 AM".
+     * Overnight logic: If start > end, currentTime is in window if currentTime >= start OR currentTime < end.
      */
     fun isTimeInWindow(
         startTimeStr: String,
@@ -50,26 +62,28 @@ object DeepSleepEngine {
             val cal = Calendar.getInstance().apply { timeInMillis = currentTimeMillis }
             val currentMinutes = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
 
-            val startMinutes = parseTimeToMinutes(startTimeStr, defaultMinutes = 21 * 60) // 9:00 PM
-            val endMinutes = parseTimeToMinutes(endTimeStr, defaultMinutes = 6 * 60)     // 6:00 AM
+            val startMinutes = parseTimeToMinutes(startTimeStr, defaultMinutes = 20 * 60) // 8:00 PM (20:00)
+            val endMinutes = parseTimeToMinutes(endTimeStr, defaultMinutes = 7 * 60)      // 7:00 AM (07:00)
 
-            if (startMinutes <= endMinutes) {
-                // Same-day window (e.g., 01:00 PM to 05:00 PM)
+            if (startMinutes < endMinutes) {
+                // Same-day window (e.g., 08:00 AM to 05:00 PM)
                 currentMinutes in startMinutes until endMinutes
-            } else {
-                // Overnight window (e.g., 09:00 PM (1260) to 06:00 AM (360))
+            } else if (startMinutes > endMinutes) {
+                // Overnight window crossing midnight (e.g., 08:00 PM (1200) to 07:00 AM (420))
                 currentMinutes >= startMinutes || currentMinutes < endMinutes
+            } else {
+                false
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error calculating time window, falling back to 9PM-6AM", e)
+            Log.w(TAG, "Error calculating time window, falling back to 8PM-7AM", e)
             val cal = Calendar.getInstance().apply { timeInMillis = currentTimeMillis }
             val h = cal.get(Calendar.HOUR_OF_DAY)
-            h >= 21 || h < 6
+            h >= 20 || h < 7
         }
     }
 
     /**
-     * Converts a time string (e.g. "09:00 PM", "9:30 AM", "21:00") into minutes from midnight (0..1439).
+     * Converts a time string (e.g. "08:00 PM", "8:00 PM", "20:00", "07:00 AM", "7:00 AM") into minutes from midnight (0..1439).
      */
     fun parseTimeToMinutes(timeStr: String, defaultMinutes: Int): Int {
         return try {
@@ -89,8 +103,8 @@ object DeepSleepEngine {
     }
 
     /**
-     * Determines whether an announcement should be suppressed under Deep Sleep.
-     * Thermal safety events are IMMUNE to suppression and will ALWAYS return false (never suppressed).
+     * Determines whether an announcement or alarm should be suppressed under Deep Sleep.
+     * CRITICAL THERMAL SAFETY EVENTS ARE IMMUNE TO SUPPRESSION and will ALWAYS return false.
      */
     fun isAnnouncementSuppressed(
         isThermalSafety: Boolean,
@@ -98,9 +112,53 @@ object DeepSleepEngine {
         currentTimeMillis: Long = System.currentTimeMillis()
     ): Boolean {
         if (isThermalSafety) {
-            // Thermal safety warnings can NEVER be suppressed under any condition
+            // Thermal safety warnings (>= 45°C overheat) can NEVER be suppressed under any condition
             return false
         }
         return isDeepSleepActive(settings, currentTimeMillis)
+    }
+
+    /**
+     * Gets the display status of Nighttime Deep Sleep for UI and logging.
+     */
+    fun getStatus(
+        settings: SettingsEntity,
+        currentTimeMillis: Long = System.currentTimeMillis()
+    ): DeepSleepStatus {
+        if (!settings.deepSleepModeEnabled) return DeepSleepStatus.INACTIVE
+        return if (isTimeInWindow(settings.deepSleepStartTime, settings.deepSleepEndTime, currentTimeMillis)) {
+            DeepSleepStatus.ACTIVE
+        } else {
+            DeepSleepStatus.SCHEDULED
+        }
+    }
+
+    /**
+     * Persists current runtime state to disk to survive activity destruction, process restart, and system events.
+     */
+    fun updateRuntimeState(context: Context, settings: SettingsEntity) {
+        try {
+            val now = System.currentTimeMillis()
+            val currentlyActive = isDeepSleepActive(settings, now)
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val wasActive = prefs.getBoolean(KEY_IS_ACTIVE, false)
+
+            if (currentlyActive != wasActive) {
+                val editor = prefs.edit()
+                    .putBoolean(KEY_IS_ACTIVE, currentlyActive)
+                    .putLong(KEY_LAST_STATE_CHANGE, now)
+
+                if (currentlyActive) {
+                    editor.putLong(KEY_ACTIVATION_TIMESTAMP, now)
+                    Log.i(TAG, "NIGHT_SLEEP_ACTIVATED at timestamp $now (Schedule: ${settings.deepSleepStartTime} to ${settings.deepSleepEndTime})")
+                } else {
+                    editor.putLong(KEY_DEACTIVATION_TIMESTAMP, now)
+                    Log.i(TAG, "NIGHT_SLEEP_DEACTIVATED at timestamp $now")
+                }
+                editor.apply()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error persisting Deep Sleep runtime state", e)
+        }
     }
 }
