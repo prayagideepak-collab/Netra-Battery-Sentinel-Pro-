@@ -661,12 +661,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
                     newValue = "${newSettings.fullBatteryThreshold}%"
                     logMessage = "Full battery threshold set to $newValue"
                 }
-                old.fullBatteryAlarmEnabled != newSettings.fullBatteryAlarmEnabled -> {
-                    settingName = "Full Battery Alarm"
-                    prevValue = old.fullBatteryAlarmEnabled.toString()
-                    newValue = newSettings.fullBatteryAlarmEnabled.toString()
-                    logMessage = "Full battery alarm set to $newValue"
-                }
+
                 old.aiThrottlingEnabled != newSettings.aiThrottlingEnabled -> {
                     settingName = "AI Throttling Guard"
                     prevValue = old.aiThrottlingEnabled.toString()

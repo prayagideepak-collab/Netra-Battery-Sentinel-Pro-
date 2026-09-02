@@ -603,10 +603,9 @@ fun SessionHistoryCard(session: ChargingSession) {
     val sdf = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.US) }
     val startStr = sdf.format(Date(session.startTime))
     val endStr = if (session.endTime != null) sdf.format(Date(session.endTime)) else "Active"
-    val durationMin = if (session.endTime != null) (session.endTime - session.startTime) / 1000 / 60 else 0
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF141822)),
         border = BorderStroke(1.dp, Color(0xFF1E293B))
     ) {
@@ -620,28 +619,60 @@ fun SessionHistoryCard(session: ChargingSession) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "SESS_CHG_${session.startTime / 1000}",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF00FFCC)
-                )
-                Text(
-                    text = if (session.isDischarge) "DISCHARGE" else "CHARGED ${session.chargingType}",
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (session.isDischarge) Color(0xFFFF5252) else Color(0xFF4CAF50),
-                    modifier = Modifier
-                        .background(
-                            if (session.isDischarge) Color(0xFFFF5252).copy(alpha = 0.1f) else Color(0xFF4CAF50).copy(alpha = 0.1f),
-                            shape = RoundedCornerShape(4.dp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "SESS_CHG_${session.startTime / 1000}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00FFCC)
+                    )
+                    // Status Badge
+                    val statusColor = when (session.sessionStatus) {
+                        "COMPLETED" -> Color(0xFF4CAF50)
+                        "INTERRUPTED" -> Color(0xFFFFC107)
+                        else -> Color(0xFF2196F3)
+                    }
+                    Text(
+                        text = session.sessionStatus,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor,
+                        modifier = Modifier
+                            .background(statusColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (session.fullyCharged) {
+                        Text(
+                            text = "⚡ FULLY CHARGED",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF00E676),
+                            modifier = Modifier
+                                .background(Color(0xFF00E676).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
                         )
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                )
+                    }
+                    Text(
+                        text = if (session.isDischarge) "DISCHARGE" else "CHARGED ${session.chargingType}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (session.isDischarge) Color(0xFFFF5252) else Color(0xFF4CAF50),
+                        modifier = Modifier
+                            .background(
+                                if (session.isDischarge) Color(0xFFFF5252).copy(alpha = 0.1f) else Color(0xFF4CAF50).copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Main Metrics Grid
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -661,7 +692,7 @@ fun SessionHistoryCard(session: ChargingSession) {
                 }
                 Column {
                     Text("DURATION", fontSize = 8.sp, color = Color.Gray)
-                    Text("$durationMin mins", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("${session.totalDurationSeconds}s", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
                 Column {
                     Text("PEAK TEMP", fontSize = 8.sp, color = Color.Gray)
@@ -674,17 +705,69 @@ fun SessionHistoryCard(session: ChargingSession) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color(0xFF1E293B)))
+            Spacer(modifier = Modifier.height(8.dp))
 
+            // Detailed Telemetry
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "Timeline: $startStr - $endStr",
-                    fontSize = 9.sp,
-                    color = Color.Gray
-                )
+                Column {
+                    Text("START TEMP", fontSize = 8.sp, color = Color.Gray)
+                    Text("${session.startTemperature}°C", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.LightGray)
+                }
+                Column {
+                    Text("END TEMP", fontSize = 8.sp, color = Color.Gray)
+                    Text(
+                        text = session.endTemperature?.let { "${it}°C" } ?: "Active",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.LightGray
+                    )
+                }
+                Column {
+                    Text("OVERCHARGE", fontSize = 8.sp, color = Color.Gray)
+                    Text(
+                        text = "${session.overchargingDurationSeconds}s",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (session.overchargingDurationSeconds > 0) Color(0xFFFF9100) else Color.LightGray
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Formatted Time Details
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Start: ${session.formattedStartTime.ifEmpty { startStr }}",
+                        fontSize = 9.sp,
+                        color = Color.Gray
+                    )
+                    session.formattedEndTime?.let {
+                        Text(
+                            text = "End: $it",
+                            fontSize = 9.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+                if (session.formattedFullChargeTime != null) {
+                    Text(
+                        text = "Full at: ${session.formattedFullChargeTime}",
+                        fontSize = 9.sp,
+                        color = Color(0xFF00FFCC),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 if (session.avgPower > 0) {
                     Text(
                         text = "Avg: ${String.format(Locale.US, "%.1f W", session.avgPower)}",

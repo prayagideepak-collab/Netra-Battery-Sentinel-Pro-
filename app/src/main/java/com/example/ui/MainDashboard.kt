@@ -957,10 +957,6 @@ fun MonitorScreen(
             onTargetLimitChange = { limit ->
                 viewModel.updateSettings(settings.copy(fullBatteryThreshold = limit))
             },
-            fullBatteryAlarmEnabled = settings.fullBatteryAlarmEnabled,
-            onToggleFullAlarm = { enabled ->
-                viewModel.updateSettings(settings.copy(fullBatteryAlarmEnabled = enabled))
-            },
             modifier = Modifier.padding(bottom = 16.dp)
         )
 

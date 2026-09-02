@@ -354,8 +354,6 @@ fun SmartChargingProtectionCard(
     temperatureCelsius: Float,
     targetLimit: Int,
     onTargetLimitChange: (Int) -> Unit,
-    fullBatteryAlarmEnabled: Boolean,
-    onToggleFullAlarm: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isOverheated = temperatureCelsius >= 42.0f
@@ -485,31 +483,7 @@ fun SmartChargingProtectionCard(
                 }
             }
 
-            // Full / Limit Alarm Toggle Row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Audio & Voice Alarm at Target",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Triggers immediate audible announcement when charge reaches target",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = fullBatteryAlarmEnabled,
-                    onCheckedChange = { onToggleFullAlarm(it) },
-                    modifier = Modifier.testTag("switch_full_charge_alarm")
-                )
-            }
+
         }
     }
 }
