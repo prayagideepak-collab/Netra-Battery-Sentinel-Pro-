@@ -164,6 +164,21 @@ interface BatteryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAppVersion(version: AppVersionEntity)
+
+    @Query("SELECT * FROM charging_protection_sessions ORDER BY startTime DESC")
+    fun getAllChargingProtectionSessions(): Flow<List<ChargingProtectionSessionEntity>>
+
+    @Query("SELECT * FROM charging_protection_sessions WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getChargingProtectionSession(sessionId: String): ChargingProtectionSessionEntity?
+
+    @Query("SELECT * FROM charging_protection_sessions WHERE endTime IS NULL ORDER BY startTime DESC LIMIT 1")
+    suspend fun getActiveChargingProtectionSession(): ChargingProtectionSessionEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChargingProtectionSession(session: ChargingProtectionSessionEntity)
+
+    @Update
+    suspend fun updateChargingProtectionSession(session: ChargingProtectionSessionEntity)
 }
 
 

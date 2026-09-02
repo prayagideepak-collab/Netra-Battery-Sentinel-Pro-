@@ -106,7 +106,7 @@ class BatteryVoiceEngine(private val context: Context, private val tts: TextToSp
         if (isEmergencyMode) return false
         
         // Deep Sleep suppression for non-critical milestone voice
-        if (settings != null && com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
+        if (settings != null && com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepMilestonesEnabled) {
             return false
         }
 
@@ -122,7 +122,7 @@ class BatteryVoiceEngine(private val context: Context, private val tts: TextToSp
 
     private fun getSkipReason(percentage: Int, isEmergencyMode: Boolean, settings: com.example.data.SettingsEntity? = null): String {
         if (isEmergencyMode) return "Emergency Mode Active"
-        if (settings != null && com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) return "Deep Sleep Active"
+        if (settings != null && com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepMilestonesEnabled) return "Deep Sleep Active"
         if (powerManager.isInteractive) return "Screen ON"
         if (audioManager.mode == AudioManager.MODE_IN_CALL || SafeTelephonyProvider.isCallActive(context)) return "Call Active"
         if (audioManager.isMusicActive) return "Media Playing"

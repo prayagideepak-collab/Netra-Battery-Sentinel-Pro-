@@ -15,6 +15,10 @@ import kotlinx.coroutines.launch
 
 class BatteryEventService : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (BatteryService.instance != null) {
+            android.util.Log.d("BatteryEventService", "BatteryService is running, skipping redundant static receiver handling.")
+            return
+        }
         val action = intent.action
         if (action == Intent.ACTION_POWER_CONNECTED) {
             try {

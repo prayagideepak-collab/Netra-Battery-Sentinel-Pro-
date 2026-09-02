@@ -51,6 +51,11 @@ object BatteryDatabaseMigrations {
             "deepSleepModeEnabled INTEGER NOT NULL DEFAULT 1",
             "deepSleepStartTime TEXT NOT NULL DEFAULT '09:00 PM'",
             "deepSleepEndTime TEXT NOT NULL DEFAULT '06:00 AM'",
+            "deepSleepStandardVoiceEnabled INTEGER NOT NULL DEFAULT 0",
+            "deepSleepFullChargeVoiceEnabled INTEGER NOT NULL DEFAULT 0",
+            "deepSleepChargerVoiceEnabled INTEGER NOT NULL DEFAULT 0",
+            "deepSleepMilestonesEnabled INTEGER NOT NULL DEFAULT 0",
+            "deepSleepBackgroundTelemetryEnabled INTEGER NOT NULL DEFAULT 1",
             "isPremium INTEGER NOT NULL DEFAULT 1",
             "credits INTEGER NOT NULL DEFAULT 500",
             "onboardingTimestamp INTEGER NOT NULL DEFAULT 0",
@@ -113,6 +118,14 @@ object BatteryDatabaseMigrations {
         database.execSQL("CREATE INDEX IF NOT EXISTS `index_charging_sessions_startTime` ON `charging_sessions` (`startTime`)")
         database.execSQL("CREATE INDEX IF NOT EXISTS `index_discharging_sessions_startTime` ON `discharging_sessions` (`startTime`)")
         database.execSQL("CREATE INDEX IF NOT EXISTS `index_app_activity_timestamp` ON `app_activity` (`timestamp`)")
+
+        // Ensure sync_tasks and charging_protection_sessions tables exist
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `sync_tasks` (`taskId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `category` TEXT NOT NULL, `state` TEXT NOT NULL, `startTimestamp` INTEGER NOT NULL, `completionTimestamp` INTEGER NOT NULL, `errorReason` TEXT, `progress` INTEGER NOT NULL, `isApplicable` INTEGER NOT NULL, `lastSuccessfulTimestamp` INTEGER NOT NULL, PRIMARY KEY(`taskId`))"
+        )
+        database.execSQL(
+            "CREATE TABLE IF NOT EXISTS `charging_protection_sessions` (`sessionId` TEXT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER, `startBatteryLevel` INTEGER NOT NULL, `endBatteryLevel` INTEGER, `startTemperature` REAL NOT NULL, `maxTemperature` REAL NOT NULL, `originalScreenTimeout` INTEGER NOT NULL, `originalBrightnessMode` INTEGER NOT NULL, `originalBrightnessValue` INTEGER NOT NULL, `originalAutoBrightness` INTEGER NOT NULL, `originalNetraBackgroundState` TEXT NOT NULL, `originalNetraSyncState` INTEGER NOT NULL, `actionsApplied` TEXT NOT NULL, `restorationStatus` TEXT NOT NULL, `timeoutModified` INTEGER NOT NULL, `brightnessModified` INTEGER NOT NULL, `brightnessModeModified` INTEGER NOT NULL, `syncModified` INTEGER NOT NULL, `backgroundWorkloadModified` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))"
+        )
     }
 
     val MIGRATION_1_37 = object : Migration(1, 37) {
@@ -192,6 +205,15 @@ object BatteryDatabaseMigrations {
             executeFullUpgrade(database)
             database.execSQL(
                 "CREATE TABLE IF NOT EXISTS `sync_tasks` (`taskId` TEXT NOT NULL, `displayName` TEXT NOT NULL, `category` TEXT NOT NULL, `state` TEXT NOT NULL, `startTimestamp` INTEGER NOT NULL, `completionTimestamp` INTEGER NOT NULL, `errorReason` TEXT, `progress` INTEGER NOT NULL, `isApplicable` INTEGER NOT NULL, `lastSuccessfulTimestamp` INTEGER NOT NULL, PRIMARY KEY(`taskId`))"
+            )
+        }
+    }
+
+    val MIGRATION_43_44 = object : Migration(43, 44) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `charging_protection_sessions` (`sessionId` TEXT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER, `startBatteryLevel` INTEGER NOT NULL, `endBatteryLevel` INTEGER, `startTemperature` REAL NOT NULL, `maxTemperature` REAL NOT NULL, `originalScreenTimeout` INTEGER NOT NULL, `originalBrightnessMode` INTEGER NOT NULL, `originalBrightnessValue` INTEGER NOT NULL, `originalAutoBrightness` INTEGER NOT NULL, `originalNetraBackgroundState` TEXT NOT NULL, `originalNetraSyncState` INTEGER NOT NULL, `actionsApplied` TEXT NOT NULL, `restorationStatus` TEXT NOT NULL, `timeoutModified` INTEGER NOT NULL, `brightnessModified` INTEGER NOT NULL, `brightnessModeModified` INTEGER NOT NULL, `syncModified` INTEGER NOT NULL, `backgroundWorkloadModified` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))"
             )
         }
     }

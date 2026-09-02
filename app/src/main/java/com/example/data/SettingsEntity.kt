@@ -60,6 +60,11 @@ data class SettingsEntity(
     val deepSleepModeEnabled: Boolean = true,
     val deepSleepStartTime: String = "08:00 PM",
     val deepSleepEndTime: String = "07:00 AM",
+    val deepSleepStandardVoiceEnabled: Boolean = false,
+    val deepSleepFullChargeVoiceEnabled: Boolean = false,
+    val deepSleepChargerVoiceEnabled: Boolean = false,
+    val deepSleepMilestonesEnabled: Boolean = false,
+    val deepSleepBackgroundTelemetryEnabled: Boolean = true,
     
     // --- NETRA MONETIZATION ENGINE V1.0 FIELDS ---
     val isPremium: Boolean = true,

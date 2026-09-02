@@ -57,15 +57,6 @@
 
 
         <receiver
-            android:name=".receiver.ChargingContextReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BATTERY_CHANGED" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
             android:name=".service.BatteryEventService"
             android:enabled="true"
             android:exported="true">

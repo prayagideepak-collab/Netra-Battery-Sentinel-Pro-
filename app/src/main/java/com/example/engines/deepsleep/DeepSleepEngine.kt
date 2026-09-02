@@ -109,13 +109,35 @@ object DeepSleepEngine {
     fun isAnnouncementSuppressed(
         isThermalSafety: Boolean,
         settings: SettingsEntity,
-        currentTimeMillis: Long = System.currentTimeMillis()
+        currentTimeMillis: Long = System.currentTimeMillis(),
+        announcementText: String = "",
+        category: String = ""
     ): Boolean {
         if (isThermalSafety) {
             // Thermal safety warnings (>= 45°C overheat) can NEVER be suppressed under any condition
             return false
         }
-        return isDeepSleepActive(settings, currentTimeMillis)
+        if (!isDeepSleepActive(settings, currentTimeMillis)) {
+            return false
+        }
+
+        val textLower = announcementText.lowercase(Locale.US)
+        val catLower = category.lowercase(Locale.US)
+
+        return when {
+            catLower.contains("charger") || textLower.contains("charger") || textLower.contains("connected") || textLower.contains("disconnected") -> {
+                !settings.deepSleepChargerVoiceEnabled
+            }
+            textLower.contains("full") || textLower.contains("100") -> {
+                !settings.deepSleepFullChargeVoiceEnabled
+            }
+            catLower.contains("milestone") || textLower.contains("percent") || textLower.contains("c ") || textLower.contains("d ") -> {
+                !settings.deepSleepMilestonesEnabled
+            }
+            else -> {
+                !settings.deepSleepStandardVoiceEnabled
+            }
+        }
     }
 
     /**

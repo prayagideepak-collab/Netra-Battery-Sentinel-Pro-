@@ -10879,8 +10879,322 @@ fun BluetoothModuleView(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVectxúÏöÎn€6«ø˚)8£-d ílÈ⁄`+;…Z†ŸÜ8ç±O#Ÿ\$Q†®$na`œ≤'ÿ3ÏQˆ$;G[∂%YætÎ\üçn$≈?œÂ'&R±Ô˜m%Ö˝hZ“d¶«5(¡]SX“Õ7Òˇ¬u¡6€nZJ=ÿk∞√«5¯˙BKâ@È„ Õq√fyK-|çœ^¶„_¿|+W™ÆJx\À{§-4≠ÀÙ–≈0ééL;h∂+æ⁄∏ (ÍAÿz`º†ã€^√£6 gâwßaœXG˙>XZ‹=¨»Ai{ ˙Í‡b|b∂•kW∑Í¢ÿÊÿÉ™•C≠+W@˙›H9(MM)GsW»ù⁄ë÷“7§ﬂqÖuáJˇZˆ˚.ú?Ëé{Îò»Œ>éO}óèæ”áî9û£pò!¬d@∞[ÀÖA“Ï-Ñ!7ÑU_JÀQ“rùØﬂ«|Ω“2NüÕ
-9ø4±4àÿ8<*é¶ÚH ¢Ëî¢ÿ$ò4∏8Q≠Ü¥(§cX®_®πéB≥DΩ|êï…R&¸$ÀSíkH˘€l‚ØEàé=4E¯ì‘Á^†áFyú†s)+w‹’¬ÉF —ÅB|ÉŸn˜òÀo¡˝ï$øÍvﬂ4ÒÇ°≥Pè4e◊w©‰h‘5?t‚h‚∑.4ú»g=‡z 
-’â\∏ê∏-,ú‡⁄x&<r/p¡A›Ã6◊¯b√.=ë¨ËƒSOX[J∏ü‹òNA'Ãh±˝WÏù/trˇ!<’„ÑΩ≈ÉÔ.\…ı´¨Á+pÑ·˜«}£6«—»ñ¢√ï=ÒËX)“õ.üÅ√#Wá¶Ö'±≤°AyÄ£–j±“a‚w≠âÁÜêC_…à&‹ë
-;Í“E„ËÄ\jÚË≠TvÏzÌ¯†´ïº„⁄K|2π÷‚ÂN≤bEîDö‹'çºÓéop`9≠‹´≈ÖÉôÙí?ˆ‚J‹25Ñ˙ö˜çf∫HÔΩÿEﬁìêÕƒıÚ°ÄZFû_p∑mú¢q¯º®Œ\…á˘l¥¯˝Ês…@*ÒÅñ÷=Uä˚}‘$N‹π33Nm– ˛|˜†¥∞∞Ω+˙~÷:;6;@~ì>„ßöeöŸr]n¢/U6{∑›»˜+‡Ø∏f¶Icq—å#Ã8xº@{˘‚‡†`Ÿ2˚?aÊπ/îå◊êªàö©qpqu¡∑`áú;‰‹!gbãëÛà-‘ê¢t§>û|ƒíâÖ√t§¬Ö0~„˜‹å¥pÕ∑”%òÔ∫{¨˘‘<têúb`1sÌ[£ø˛ÏlòNÛ“Ü∞t∫”<î∆N1È\>ﬂÉvq`åÈY]+√§øV~ŒXô.“+∑+”Ä^∂.¶Õñ¡ o:ß«€ÇïÈ¸(œDx«~Fa<ÒÅì<;ö‹—‰é&[Lì12ã„Ù‚Kõ¬)
-)∂<âò c¨‹28ú¶û¡·tßy8|ZäÜiNﬁ^qocX®∏∑C¬œ	qÅv8∏Ö8x	û¨˙sq]ª:Ω\Ü_véæmo	‚‹ë›ÿ/πòv;ä;‹1`jãêÄfüàÜQ0—∂a˙)≈4"œ›‡Ño6ìÎÅ_öÇ7~ùW}\§ˇÊ”V:˙∫ºxOü!‘◊X≠Ñ‘iØZÑŸ[S˚™ÌŒ¡A+…9iœÈ_k‹i @ıp¬	§S„Kç/UsoéF3XÄ§m˘XØ”›Œ·  KV≥ı¶WúÀ÷á⁄ÿ/W€YQggª¿%´&≤5@qKó◊`≤‚Úù%&|GVTq≤¥íÁ\æ˙˘U∞ó¨¸Œ:¯KVç¿Ò”>÷Â‹«P˜˜Îd´q÷≤ì≠K∆d≈Rç•(˚©09Îô ˘ºqôlEd&€6ìï≠Ò¸ï5(˘ØIQ≠Ì⁄ôßò“&˘»xÚ1πùA¬ı0ÄQ´ôxq·{∞5ÚTñmæ^òm ≤⁄%ÿ"ÚÍe™\ÂX!˘◊OﬁôD(ã˛P™£ßÏÔﬂˇ¯Ñ◊ëóiÒ‹¨0ˇbîì’⁄	"GÃ±˛Wà¥Nã¥]B¬I˚÷®óπË˛˛>Î-ÿQ $|^)·jïv±Ë)·◊ﬁà(¸&Æﬁ ´ë]üóÛÃÎq><˜?håﬁTπ}~Ïîµﬁã÷€w'∏p•%Ùê=cÈ7pM_©∑2_ÈÇ'÷ıów∞»Vﬁv!#7õŸ/®µˇBV∫Sô∞∆43√Vßπ©úÍ'sª;´WãQíi6Pç±ûéß …\ôãvl6]∂ìóYﬁA?A=(à·Â? ≤Ô˛éíhZ˛≠à)ãœ&€oˇ   ˇˇ ‡"J_
+                        imageVector = androidx.compose.material.icons.Icons.Filled.Bluetooth,
+                        contentDescription = "Bluetooth",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Bluetooth & Connectivity",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = if (isExpanded) androidx.compose.material.icons.Icons.Filled.ExpandLess else androidx.compose.material.icons.Icons.Filled.ExpandMore,
+                        contentDescription = "Expand",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Active Bluetooth telemetry and connection status.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (bluetoothHistory.isNotEmpty()) {
+                    InteractiveRealtimeGraph(points = bluetoothHistory, labelY = "RSSI", lineColor = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeatherModuleView(
+    state: com.example.service.BatteryState,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    weatherHistory: List<Float>,
+    isRefreshing: Boolean = false
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+        modifier = Modifier.fillMaxWidth().testTag("weather_module_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.WbSunny,
+                        contentDescription = "Weather",
+                        tint = Color(0xFFFF9800),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Environmental & Weather Intelligence",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = if (isExpanded) androidx.compose.material.icons.Icons.Filled.ExpandLess else androidx.compose.material.icons.Icons.Filled.ExpandMore,
+                        contentDescription = "Expand",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Device temperature: ${String.format(java.util.Locale.US, "%.1f", state.temperature)}¬∞C",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (weatherHistory.isNotEmpty()) {
+                    InteractiveRealtimeGraph(points = weatherHistory, labelY = "¬∞C", lineColor = Color(0xFFFF9800))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StorageModuleView(
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    storageHistory: List<Float>,
+    isRefreshing: Boolean = false
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+        modifier = Modifier.fillMaxWidth().testTag("storage_module_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.Storage,
+                        contentDescription = "Storage",
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Storage & Disk Optimization",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = if (isExpanded) androidx.compose.material.icons.Icons.Filled.ExpandLess else androidx.compose.material.icons.Icons.Filled.ExpandMore,
+                        contentDescription = "Expand",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Local cache and disk usage monitoring.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (storageHistory.isNotEmpty()) {
+                    InteractiveRealtimeGraph(points = storageHistory, labelY = "%", lineColor = Color(0xFF4CAF50))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RamModuleView(
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    ramHistory: List<Float>,
+    isRefreshing: Boolean = false
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+        modifier = Modifier.fillMaxWidth().testTag("ram_module_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Filled.Memory,
+                        contentDescription = "RAM",
+                        tint = Color(0xFF9C27B0),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "RAM & Memory Pressure",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = if (isExpanded) androidx.compose.material.icons.Icons.Filled.ExpandLess else androidx.compose.material.icons.Icons.Filled.ExpandMore,
+                        contentDescription = "Expand",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Real-time RAM utilization tracking.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                if (ramHistory.isNotEmpty()) {
+                    InteractiveRealtimeGraph(points = ramHistory, labelY = "%", lineColor = Color(0xFF9C27B0))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ChargingModuleView(
+    state: com.example.service.BatteryState,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    chargingHistory: List<Float>,
+    isRefreshing: Boolean = false
+) {
+    val chargeColor = if (state.isCharging) Color(0xFFFFBC00) else Color(0xFF9E9E9E)
+    val powerWatts = state.powerWatt
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, if (isRefreshing) MaterialTheme.colorScheme.primary else chargeColor.copy(alpha = 0.2f)),
+        modifier = Modifier.fillMaxWidth().testTag("charging_module_card")
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.Bolt,
+                            contentDescription = "Charging info",
+                            tint = chargeColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Charging Engine Intelligence",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    IconButton(onClick = onToggleExpand, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = if (isExpanded) androidx.compose.material.icons.Icons.Filled.ExpandLess else androidx.compose.material.icons.Icons.Filled.ExpandMore,
+                            contentDescription = "Expand",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = if (state.isCharging) "Charging (${state.chargingType})" else "Not Charging",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = chargeColor
+                        )
+                        Text(
+                            text = "${state.percentage}% ‚Ä¢ ${String.format(java.util.Locale.US, "%.1f", state.temperature)}¬∞C",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = if (powerWatts != 0f) "${String.format(java.util.Locale.US, "%.1f", powerWatts)}W" else "--- W",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                if (isExpanded) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Charging Velocity & History",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (chargingHistory.isNotEmpty()) {
+                        InteractiveRealtimeGraph(
+                            points = chargingHistory,
+                            labelY = "%",
+                            lineColor = chargeColor
+                        )
+                    } else {
+                        Text(
+                            text = "No charging history recorded yet.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

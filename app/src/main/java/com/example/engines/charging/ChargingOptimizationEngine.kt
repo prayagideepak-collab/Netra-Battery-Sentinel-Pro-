@@ -66,6 +66,7 @@ object ChargingOptimizationEngine {
         activeDbSessionId = null
         tempTelemetryHistory.clear()
         batteryTelemetryHistory.clear()
+        AutomaticChargingProtectionEngine.resetForTesting(context)
         ThermalProtectionEngine.resetForTesting(context)
     }
 
@@ -91,6 +92,9 @@ object ChargingOptimizationEngine {
         }
         batteryTelemetryHistory.add(now to batteryLevel)
         if (batteryTelemetryHistory.size > 50) batteryTelemetryHistory.removeAt(0)
+
+        // Process Automatic Charging Protection Mode
+        AutomaticChargingProtectionEngine.processTelemetry(context, isCharging, batteryLevel, temperature, chargingType)
 
         val thermalState = ThermalProtectionEngine.processTemperature(temperature, context)
         val isThermalProtected = ThermalProtectionEngine.isProtectionActive() || thermalState == ThermalSessionState.THERMAL_PROTECTION || thermalState == ThermalSessionState.THERMAL_ESCALATED

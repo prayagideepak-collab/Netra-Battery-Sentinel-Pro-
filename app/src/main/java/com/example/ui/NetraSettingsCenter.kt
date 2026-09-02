@@ -777,7 +777,7 @@ fun DeepSleepCategoryView(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Authoritative behavior when Deep Sleep is ACTIVE:",
+                    text = "User-Configurable Rules (Toggle during Deep Sleep):",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -789,56 +789,73 @@ fun DeepSleepCategoryView(
                     border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PolicyRuleRow(
+                        PolicyToggleRow(
                             feature = "Standard Voice Announcements",
-                            stateText = "🔴 OFF",
-                            stateColor = Color(0xFFE53935),
-                            description = "Silenced to prevent sleep disruption"
+                            description = "Permit general voice alerts during Deep Sleep window",
+                            checked = settings.deepSleepStandardVoiceEnabled,
+                            onCheckedChange = { onSettingsChanged(settings.copy(deepSleepStandardVoiceEnabled = it)) }
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                        PolicyToggleRow(
                             feature = "Full-Charge 100% Voice",
-                            stateText = "🔴 OFF",
-                            stateColor = Color(0xFFE53935),
-                            description = "No midnight voice alerts when charging completes"
+                            description = "Permit 100% charging completion voice / alarm",
+                            checked = settings.deepSleepFullChargeVoiceEnabled,
+                            onCheckedChange = { onSettingsChanged(settings.copy(deepSleepFullChargeVoiceEnabled = it)) }
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                        PolicyToggleRow(
                             feature = "Charger Connect / Disconnect Voice",
-                            stateText = "🔴 OFF",
-                            stateColor = Color(0xFFE53935),
-                            description = "Silent plug-in and unplug detection"
+                            description = "Permit charger plug-in / unplug voice announcements",
+                            checked = settings.deepSleepChargerVoiceEnabled,
+                            onCheckedChange = { onSettingsChanged(settings.copy(deepSleepChargerVoiceEnabled = it)) }
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                        PolicyToggleRow(
                             feature = "Periodic Battery Milestones",
-                            stateText = "🔴 OFF",
-                            stateColor = Color(0xFFE53935),
-                            description = "25%, 50%, 75%, 90% milestone voice muted"
+                            description = "Permit 25%, 50%, 75%, 90% milestone voice alerts",
+                            checked = settings.deepSleepMilestonesEnabled,
+                            onCheckedChange = { onSettingsChanged(settings.copy(deepSleepMilestonesEnabled = it)) }
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                        PolicyToggleRow(
                             feature = "Background Telemetry Collection",
-                            stateText = "🟢 ON",
-                            stateColor = Color(0xFF4CAF50),
-                            description = "Low-power background sensor logging remains active"
+                            description = "Low-power background sensor logging and historical metrics",
+                            checked = settings.deepSleepBackgroundTelemetryEnabled,
+                            onCheckedChange = { onSettingsChanged(settings.copy(deepSleepBackgroundTelemetryEnabled = it)) }
                         )
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "Mandatory Safety Rules (Locked & Always Active):",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PolicyLockedRow(
                             feature = "Critical Safety Processing",
-                            stateText = "🟢 ON",
+                            stateText = "🔒 ALWAYS ACTIVE",
                             stateColor = Color(0xFF4CAF50),
                             description = "System watchdog and hardware monitors stay vigilant"
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                        PolicyLockedRow(
                             feature = "Thermal Safety Warning",
                             stateText = "🔒 PERMANENT ON",
                             stateColor = Color(0xFFFF5722),
                             description = "Cannot be suppressed under any circumstances for device safety"
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyRuleRow(
+                        PolicyLockedRow(
                             feature = "Overheat & Temperature Violations",
                             stateText = "🔒 ALWAYS ACTIVE",
                             stateColor = Color(0xFFFF5722),
@@ -855,6 +872,60 @@ fun DeepSleepCategoryView(
 
 @Composable
 fun PolicyRuleRow(
+    feature: String,
+    stateText: String,
+    stateColor: Color,
+    description: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(text = feature, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = description, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Surface(
+            color = stateColor.copy(alpha = 0.12f),
+            shape = RoundedCornerShape(6.dp)
+        ) {
+            Text(
+                text = stateText,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = stateColor,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun PolicyToggleRow(
+    feature: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(text = feature, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = description, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
+@Composable
+fun PolicyLockedRow(
     feature: String,
     stateText: String,
     stateColor: Color,

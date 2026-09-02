@@ -552,11 +552,12 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         }
         stickyIntent?.let { processBatteryUpdate(it) }
         try {
+            com.example.engines.charging.AutomaticChargingProtectionEngine.initialize(applicationContext)
             com.example.engines.thermal.ThermalProtectionEngine.initialize(applicationContext)
             com.example.engines.AppUsageEngine.initialize(applicationContext, repository)
             startAppConsumptionTracker()
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting AppConsumptionTracker / ThermalEngine", e)
+            Log.e(TAG, "Error starting AppConsumptionTracker / ThermalEngine / ChargingProtectionEngine", e)
         }
     }
 
@@ -677,6 +678,17 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             com.example.engines.WatchdogEngine.registerEvent("Thermal")
         } catch (e: Exception) {
             Log.e(TAG, "Watchdog event registration failed", e)
+        }
+        try {
+            val extraKey = try {
+                BatteryManager::class.java.getField("EXTRA_USB_DATA_TRANSFER").get(null) as? String ?: "usb_data_transfer"
+            } catch (e: Throwable) {
+                "usb_data_transfer"
+            }
+            val isUsbDataTransfer = intent.getBooleanExtra(extraKey, false)
+            com.example.engines.charging.ChargingIntelligenceEngine.toggleUsbDataTransfer(isUsbDataTransfer)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to toggle USB data transfer in ChargingIntelligenceEngine", e)
         }
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         
@@ -813,6 +825,15 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             temperature,
             isCharging,
             currentSettings
+        )
+
+        // Authoritative Automatic Charging Protection Mode
+        com.example.engines.charging.AutomaticChargingProtectionEngine.processTelemetry(
+            context = applicationContext,
+            isCharging = isCharging,
+            batteryLevel = percentage,
+            temperature = temperature,
+            chargingType = chargingType
         )
 
     }
@@ -952,8 +973,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             // Initial sync
             com.example.engines.AppUsageEngine.syncAppConsumption(applicationContext, repository)
 
-            // Periodic monitoring loop (runs every 15 seconds)
-            val intervalSec = 15L
+            // Periodic monitoring loop (runs adaptively: 15s screen-on, dynamic background cadence screen-off)
             var lastCheckedDay = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
             
             while (isActive) {
@@ -964,7 +984,12 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                     } catch (e: Exception) {
                         Log.e(TAG, "Watchdog periodic event registration failed", e)
                     }
-                    delay(intervalSec * 1000L)
+                    val dynamicIntervalMs = if (isScreenOn) {
+                        15000L
+                    } else {
+                        com.example.engines.power.AutonomousPowerPolicyEngine.policyState.value.backgroundPollingIntervalMs.coerceAtLeast(120000L)
+                    }
+                    delay(dynamicIntervalMs)
 
                     // Daily Calendar date boundary reset check
                     val currentDay = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
@@ -1045,7 +1070,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
 
     private fun startFullBatteryAlarm(settings: SettingsEntity, percentage: Int) {
         // Evaluate Nighttime Deep Sleep policy: Suppress non-critical full battery alarm during night sleep window (e.g. 04:00 AM)
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepFullChargeVoiceEnabled) {
             Log.i(TAG, "Full battery alarm suppressed by Nighttime Deep Sleep policy at $percentage%")
             stopFullBatteryAlarm()
             try {
@@ -1448,6 +1473,13 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         isTrackingFullCharge = true
         com.example.engines.BatteryPredictionEngine.invalidateStateTransition(isCharging = true)
         
+        try {
+            com.example.engines.ibrsle.IntelligentBackgroundRuntimeEngine.onPowerConnected(applicationContext)
+            com.example.engines.ChargingRecoveryEngine.recoverServices(applicationContext)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delegate power connected to engines", e)
+        }
+        
         // Immediate sub-100ms state publish
         liveBatteryState.update { current ->
             current.copy(
@@ -1494,6 +1526,12 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         Log.d(TAG, "ACTION_POWER_DISCONNECTED received: invalidating old charging ETA")
         isTrackingFullCharge = false
         com.example.engines.BatteryPredictionEngine.invalidateStateTransition(isCharging = false)
+        
+        try {
+            com.example.engines.ibrsle.IntelligentBackgroundRuntimeEngine.onPowerDisconnected(applicationContext)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delegate power disconnected to engines", e)
+        }
         
         // Immediate sub-100ms state publish
         liveBatteryState.update { current ->
@@ -2578,7 +2616,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun announceChargerConnected(type: String, level: Int, settings: SettingsEntity) {
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepChargerVoiceEnabled) {
             Log.d(TAG, "Charger connected announcement suppressed due to Deep Sleep Mode")
             return
         }
@@ -2594,7 +2632,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun announceChargerDisconnected(level: Int, settings: SettingsEntity, durationMs: Long = 0L) {
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepChargerVoiceEnabled) {
             Log.d(TAG, "Charger disconnected announcement suppressed due to Deep Sleep Mode")
             return
         }
@@ -2606,7 +2644,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun announceChargingComplete(settings: SettingsEntity) {
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepFullChargeVoiceEnabled) {
             Log.d(TAG, "Full battery announcement suppressed due to Deep Sleep Mode")
             return
         }
@@ -2617,7 +2655,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
 
     private fun checkIntervalAnnouncements(percentage: Int, isCharging: Boolean, settings: SettingsEntity) {
         if (!isCharging) return
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) return
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepStandardVoiceEnabled) return
         
         val interval = settings.announcementInterval
         if (interval <= 0) return
@@ -2634,7 +2672,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
 
     private fun checkMilestoneAnnouncements(percentage: Int, isCharging: Boolean, settings: SettingsEntity) {
         if (!isCharging || percentage == lastAnnouncedPercentage) return
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) return
+        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepMilestonesEnabled) return
 
         val shouldAnnounce = when (percentage) {
             25 -> settings.milestone25Enabled
@@ -3501,7 +3539,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             }
         }
 
-        if (com.example.engines.deepsleep.DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety, settings)) {
+        if (com.example.engines.deepsleep.DeepSleepEngine.isAnnouncementSuppressed(isThermalSafety, settings, System.currentTimeMillis(), announcement.text, announcement.category.name)) {
             Log.d(TAG, "Announcement suppressed by DeepSleepEngine policy: ${announcement.text}")
             return
         }
