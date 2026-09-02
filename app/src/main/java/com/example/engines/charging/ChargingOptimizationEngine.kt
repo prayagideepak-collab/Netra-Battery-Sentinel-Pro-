@@ -102,7 +102,6 @@ object ChargingOptimizationEngine {
         if (!isCharging) {
             if (currentState != ChargingOptimizationState.NOT_CHARGING) {
                 Log.i(TAG, "Charger disconnected. Ending charging optimization. Thermal protection active status: $isThermalProtected")
-                endChargingSession(context, batteryLevel, temperature, false)
                 currentState = ChargingOptimizationState.NOT_CHARGING
                 activeSnapshot = null
                 onChargingEventCallback?.invoke(
@@ -125,22 +124,6 @@ object ChargingOptimizationEngine {
             )
             activeSnapshot = snapshot
 
-            GlobalScope.launch(Dispatchers.IO) {
-                try {
-                    val dao = BatteryDatabase.getDatabase(context).batteryDao()
-                    val session = ChargingSession(
-                        startTime = now,
-                        startPercentage = batteryLevel,
-                        chargingType = chargingType,
-                        maxTemperature = temperature,
-                        avgPower = 0f
-                    )
-                    activeDbSessionId = dao.insertSession(session)
-                    Log.i(TAG, "New charging session recorded in DB with ID: $activeDbSessionId")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to persist charging session start: ${e.message}")
-                }
-            }
             Log.i(TAG, "Charging connected at $batteryLevel%, Temp: $temperature°C. Optimization started.")
             onChargingEventCallback?.invoke(
                 "CHARGING_CONNECTED",
@@ -174,28 +157,6 @@ object ChargingOptimizationEngine {
     }
 
     private fun endChargingSession(context: Context, finalBattery: Int, finalTemp: Float, fullCharge: Boolean) {
-        val dbId = activeDbSessionId
-        val now = System.currentTimeMillis()
-
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                if (dbId != null && dbId > 0) {
-                    val dao = BatteryDatabase.getDatabase(context).batteryDao()
-                    val session = dao.getChargingSession(dbId)
-                    if (session != null) {
-                        val updated = session.copy(
-                            endTime = now,
-                            endPercentage = finalBattery,
-                            maxTemperature = if (finalTemp > session.maxTemperature) finalTemp else session.maxTemperature
-                        )
-                        dao.updateSession(updated)
-                        Log.i(TAG, "Charging session $dbId finalized in DB.")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to finalize charging session in DB: ${e.message}")
-            }
-        }
         activeDbSessionId = null
     }
 

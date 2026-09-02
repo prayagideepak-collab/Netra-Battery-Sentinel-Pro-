@@ -37,9 +37,12 @@ object NetraNativeAutomationService {
     @Volatile private var maxTempCharge: Float = -999f
     @Volatile private var fullChargeTimestamp: Long = 0L
 
+    @Volatile
+    private var initJob: Job? = null
+
     fun initialize(context: Context) {
         Log.i(TAG, "Initializing NetraNativeAutomationService...")
-        scope.launch {
+        initJob = scope.launch {
             try {
                 val db = BatteryDatabase.getDatabase(context)
                 val activeSession = db.batteryDao().getActiveSession()
@@ -47,17 +50,23 @@ object NetraNativeAutomationService {
                     isChargingActive = true
                     batteryStart = activeSession.startPercentage
                     hoursStart = activeSession.startTime
+                    lastPowerConnected = true
                     Log.i(TAG, "Restored active charging session from DB: startPercentage=$batteryStart, startTime=$hoursStart")
+                } else {
+                    lastPowerConnected = false
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error restoring charging session state", e)
+                lastPowerConnected = false
             }
         }
     }
 
-    fun onBatteryUpdate(context: Context, intent: Intent) {
+    fun onBatteryUpdate(context: Context, intent: Intent, forcedPluggedState: Boolean? = null) {
         scope.launch {
             try {
+                initJob?.join() // Wait for async initialization to restore previous state cleanly
+
                 val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
                 val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
                 val percentage = if (level >= 0 && scale > 0) (level * 100) / scale else -1
@@ -82,18 +91,28 @@ object NetraNativeAutomationService {
                 }
 
                 val plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
-                val isPlugged = plugged != 0
+                val isPlugged = forcedPluggedState ?: (plugged != 0)
 
                 // Notify NetraMultiMechanismCoordinator (Capability A, C, D)
                 com.example.engines.coordinator.NetraMultiMechanismCoordinator.onBatteryTelemetryUpdate(context, percentage, isCharging, currentTemp)
 
-                // 1. Power Connected / Disconnected detection
+                // 1. Power Connected / Disconnected detection (Clean downstream tracking, zero side-channel DB writes)
                 if (lastPowerConnected != isPlugged) {
                     lastPowerConnected = isPlugged
                     if (isPlugged) {
-                        handlePowerConnected(context, percentage, currentTemp)
+                        Log.i(TAG, "Power connection observed downstream in NetraNativeAutomationService. Clearing ascent lists.")
+                        isChargingActive = true
+                        batteryStart = percentage
+                        hoursStart = System.currentTimeMillis()
+                        maxTempCharge = currentTemp
+                        fullChargeTimestamp = 0L
+                        triggeredBattery5Ascent.clear()
+                        triggeredBattery10Ascent.clear()
                     } else {
-                        handlePowerDisconnected(context, percentage, currentTemp)
+                        Log.i(TAG, "Power disconnection observed downstream in NetraNativeAutomationService. Clearing descent lists.")
+                        isChargingActive = false
+                        triggeredDischarge5Descent.clear()
+                        triggeredDischarge10Descent.clear()
                     }
                 }
 
@@ -128,71 +147,6 @@ object NetraNativeAutomationService {
                     Log.d(TAG, "Active charging session confirmed on unlock. Session start time: ${active.startTime}")
                 }
             }
-        }
-    }
-
-    private suspend fun handlePowerConnected(context: Context, percentage: Int, temp: Float) {
-        Log.i(TAG, "CONNECTED AUTOMATION EXECUTED: External power connected at $percentage%, temp $temp°C")
-        isChargingActive = true
-        batteryStart = percentage
-        hoursStart = System.currentTimeMillis()
-        maxTempCharge = temp
-        fullChargeTimestamp = 0L
-
-        triggeredBattery5Ascent.clear()
-        triggeredBattery10Ascent.clear()
-
-        try {
-            val db = BatteryDatabase.getDatabase(context)
-            val session = ChargingSession(
-                startTime = hoursStart,
-                startPercentage = percentage,
-                chargingType = "AC/USB",
-                maxTemperature = temp
-            )
-            db.batteryDao().insertSession(session)
-            db.batteryDao().insertBatteryEvent(BatteryEvent(
-                timestamp = System.currentTimeMillis(),
-                eventType = "POWER_CONNECTED",
-                title = "Charger Connected",
-                details = "Battery at $percentage%, Temp: $temp°C. Automatic sync triggered.",
-                category = "AUTOMATION",
-                source = "NetraNativeAutomationService"
-            ))
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to persist power connected session", e)
-        }
-    }
-
-    private suspend fun handlePowerDisconnected(context: Context, percentage: Int, temp: Float) {
-        Log.i(TAG, "DISCONNECTED AUTOMATION EXECUTED: External power disconnected at $percentage%, temp $temp°C")
-        val hoursEnd = System.currentTimeMillis()
-        isChargingActive = false
-
-        triggeredDischarge5Descent.clear()
-        triggeredDischarge10Descent.clear()
-
-        try {
-            val db = BatteryDatabase.getDatabase(context)
-            val active = db.batteryDao().getActiveSession()
-            if (active != null) {
-                val updated = active.copy(
-                    endTime = hoursEnd,
-                    endPercentage = percentage,
-                    maxTemperature = if (temp > active.maxTemperature) temp else active.maxTemperature
-                )
-                db.batteryDao().updateSession(updated)
-            }
-            db.batteryDao().insertBatteryEvent(BatteryEvent(
-                timestamp = System.currentTimeMillis(),
-                eventType = "POWER_DISCONNECTED",
-                title = "Charger Disconnected",
-                details = "Final Battery: $percentage%, Temp: $temp°C. Duration: ${(hoursEnd - hoursStart)/1000}s",
-                category = "AUTOMATION",
-                source = "NetraNativeAutomationService"
-            ))
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to finalize session on power disconnect", e)
         }
     }
 

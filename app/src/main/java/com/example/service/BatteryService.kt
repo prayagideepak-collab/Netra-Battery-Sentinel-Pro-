@@ -666,10 +666,20 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         forcePowerDisconnected: Boolean = false
     ) {
         android.util.Log.d(TAG, "processBatteryUpdate: intent=${intent.action}, extras=${intent.extras}")
+        val forcedState = when {
+            forcePowerConnected -> true
+            forcePowerDisconnected -> false
+            else -> null
+        }
         try {
-            NetraNativeAutomationService.onBatteryUpdate(this, intent)
+            NetraNativeAutomationService.onBatteryUpdate(this, intent, forcedState)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to dispatch update to NetraNativeAutomationService", e)
+        }
+        try {
+            com.example.engines.charging.ChargingIntelligenceEngine.processUpdate(applicationContext, intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to dispatch update to ChargingIntelligenceEngine", e)
         }
         try {
             com.example.engines.WatchdogEngine.registerEvent("Battery")

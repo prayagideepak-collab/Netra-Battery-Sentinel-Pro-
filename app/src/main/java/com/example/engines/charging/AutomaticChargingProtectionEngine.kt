@@ -8,6 +8,7 @@ import android.util.Log
 import com.example.data.BatteryDatabase
 import com.example.data.BatteryEvent
 import com.example.data.ChargingProtectionSessionEntity
+import com.example.data.ChargingSession
 import com.example.engines.thermal.ThermalProtectionEngine
 import com.example.engines.thermal.ThermalSessionState
 import com.example.util.DiagnosticLogger
@@ -191,6 +192,7 @@ object AutomaticChargingProtectionEngine {
     private const val KEY_PROTECTION_STATE = "charging_protection_state"
     private const val KEY_ACTIVE_SNAPSHOT = "charging_active_snapshot"
     private const val KEY_LAST_KNOWN_CHARGING = "charging_last_known_charging"
+    private const val KEY_ACTIVE_DB_SESSION_ID = "active_db_session_id"
 
     const val TARGET_CHARGING_TIMEOUT_MS = 15000 // 15 seconds
     const val TARGET_CHARGING_BRIGHTNESS = 26 // 10% of 255
@@ -200,6 +202,9 @@ object AutomaticChargingProtectionEngine {
 
     @Volatile
     private var activeSnapshot: ChargingProtectionSnapshot? = null
+
+    @Volatile
+    private var activeDbSessionId: Long? = null
 
     @Volatile
     private var isInitialized = false
@@ -221,6 +226,9 @@ object AutomaticChargingProtectionEngine {
 
         val snapshotJson = prefs.getString(KEY_ACTIVE_SNAPSHOT, null)
         activeSnapshot = if (snapshotJson != null) ChargingProtectionSnapshot.fromJson(snapshotJson) else null
+
+        val savedDbSessionId = prefs.getLong(KEY_ACTIVE_DB_SESSION_ID, -1L)
+        activeDbSessionId = if (savedDbSessionId != -1L) savedDbSessionId else null
 
         if (currentState == ChargingProtectionState.CHARGING_PROTECTION_ACTIVE || currentState == ChargingProtectionState.CHARGING_PROTECTION_RUNNING) {
             val wasCharging = prefs.getBoolean(KEY_LAST_KNOWN_CHARGING, true)
@@ -509,13 +517,46 @@ object AutomaticChargingProtectionEngine {
         currentState = ChargingProtectionState.CHARGING_PROTECTION_RUNNING
         persistSession(context, ChargingProtectionState.CHARGING_PROTECTION_RUNNING, updatedSnapshot)
 
-        // Asynchronously persist session to Room DB
+        // Asynchronously persist session and event to Room DB
         scope.launch {
             try {
-                val dao = BatteryDatabase.getDatabase(context).batteryDao()
+                val db = BatteryDatabase.getDatabase(context)
+                val dao = db.batteryDao()
+                
+                // 1. Insert/Reuse ChargingSession
+                var session = dao.getActiveSession()
+                val now = System.currentTimeMillis()
+                if (session == null) {
+                    session = ChargingSession(
+                        startTime = now,
+                        startPercentage = batteryLevel,
+                        chargingType = chargingType,
+                        maxTemperature = temperature
+                    )
+                    val insertedId = dao.insertSession(session)
+                    activeDbSessionId = insertedId
+                    getPrefs(context).edit().putLong(KEY_ACTIVE_DB_SESSION_ID, insertedId).apply()
+                    Log.i(TAG, "General ChargingSession created in DB with ID: $insertedId")
+                } else {
+                    activeDbSessionId = session.id
+                    getPrefs(context).edit().putLong(KEY_ACTIVE_DB_SESSION_ID, session.id).apply()
+                    Log.i(TAG, "Reused existing general ChargingSession from DB: ${session.id}")
+                }
+
+                // 2. Insert ChargingProtectionSessionEntity
                 dao.insertChargingProtectionSession(updatedSnapshot.toEntity())
+
+                // 3. Write POWER_CONNECTED Event to keep standard event timeline intact
+                dao.insertBatteryEvent(BatteryEvent(
+                    timestamp = System.currentTimeMillis(),
+                    eventType = "POWER_CONNECTED",
+                    title = "Charger Connected",
+                    details = "Battery at $batteryLevel%, Temp: ${temperature}°C. Automatic sync triggered.",
+                    category = "AUTOMATION",
+                    source = "NetraNativeAutomationService"
+                ))
             } catch (e: Exception) {
-                Log.w(TAG, "Room DB insert charging protection session failed: ${e.message}")
+                Log.e(TAG, "Failed to persist charging session data and events to DB: ${e.message}")
             }
         }
     }
@@ -752,15 +793,45 @@ object AutomaticChargingProtectionEngine {
             )
         }
 
-        // Update database record
+        // Update database records
         val endNow = System.currentTimeMillis()
         val finalEntity = snapshot.toEntity(endTime = endNow, endBatteryLevel = batteryLevel, finalStatus = finalStatus)
+        val dbSessionId = activeDbSessionId ?: getPrefs(context).getLong(KEY_ACTIVE_DB_SESSION_ID, -1L)
+        
         scope.launch {
             try {
-                val dao = BatteryDatabase.getDatabase(context).batteryDao()
+                val db = BatteryDatabase.getDatabase(context)
+                val dao = db.batteryDao()
+                
+                // 1. Update ChargingProtectionSessionEntity
                 dao.updateChargingProtectionSession(finalEntity)
+
+                // 2. Finalize ChargingSession
+                val session = if (dbSessionId != -1L) dao.getChargingSession(dbSessionId) else dao.getActiveSession()
+                if (session != null && session.endTime == null) {
+                    val updated = session.copy(
+                        endTime = endNow,
+                        endPercentage = batteryLevel,
+                        maxTemperature = if (temperature > session.maxTemperature) temperature else session.maxTemperature
+                    )
+                    dao.updateSession(updated)
+                    Log.i(TAG, "General ChargingSession ${session.id} finalized in DB.")
+                }
+
+                // 3. Write POWER_DISCONNECTED Event to keep standard event timeline intact
+                dao.insertBatteryEvent(BatteryEvent(
+                    timestamp = System.currentTimeMillis(),
+                    eventType = "POWER_DISCONNECTED",
+                    title = "Charger Disconnected",
+                    details = "Final Battery: $batteryLevel%, Temp: ${temperature}°C. Duration: ${if (session != null) (endNow - session.startTime)/1000 else 0}s",
+                    category = "AUTOMATION",
+                    source = "NetraNativeAutomationService"
+                ))
             } catch (e: Exception) {
-                Log.w(TAG, "Room DB update charging protection session failed: ${e.message}")
+                Log.e(TAG, "Failed to update charging session data and events in DB: ${e.message}")
+            } finally {
+                activeDbSessionId = null
+                getPrefs(context).edit().remove(KEY_ACTIVE_DB_SESSION_ID).apply()
             }
         }
 

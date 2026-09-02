@@ -47,8 +47,8 @@ object ChargingIntelligenceEngine : Engine {
     private var initialBattery: Int = 0
     private var lastAnnouncedEffectiveClass: EffectiveChargingClass? = null
     private var pendingEffectiveClass: EffectiveChargingClass? = null
-    private var effectiveClassStabilityCounter = 0
-    private var timerJob: Job? = null
+    private var classChangeTime: Long = 0L
+    private var targetReachedStartTime: Long = 0L
 
     // Rolling thermal history for trend calculation
     private val tempHistory = LinkedList<Pair<Long, Float>>() // timestamp, temp
@@ -64,13 +64,11 @@ object ChargingIntelligenceEngine : Engine {
             _chargingState.value = _chargingState.value.copy(deviceProfile = profile)
         }
 
-        startChargingMonitorLoop()
-        Log.i(TAG, "Charging Intelligence Engine initialized successfully.")
+        Log.i(TAG, "Charging Intelligence Engine initialized successfully in event-driven mode.")
     }
 
     override fun shutdown() {
         Log.i(TAG, "Shutting down Charging Intelligence Engine...")
-        timerJob?.cancel()
         isInitialized.set(false)
     }
 
@@ -94,17 +92,11 @@ object ChargingIntelligenceEngine : Engine {
         Log.i(TAG, "USB Data Transfer active set to: $active")
     }
 
-    private fun startChargingMonitorLoop() {
-        timerJob?.cancel()
-        timerJob = scope.launch {
-            while (isInitialized.get()) {
-                appContext?.let { ctx ->
-                    val intent = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-                    intent?.let { parseBatteryIntent(ctx, it) }
-                }
-                delay(2000L) // update every 2 seconds
-            }
+    fun processUpdate(context: Context, intent: Intent) {
+        if (!isInitialized.get()) {
+            initialize(context)
         }
+        parseBatteryIntent(context, intent)
     }
 
     private fun parseBatteryIntent(context: Context, intent: Intent) {
@@ -140,7 +132,7 @@ object ChargingIntelligenceEngine : Engine {
             historicalPeakTemp = currentTemp
             lastAnnouncedEffectiveClass = null
             pendingEffectiveClass = null
-            effectiveClassStabilityCounter = 0
+            targetReachedStartTime = 0L
             Log.i(TAG, "Charger connected at $batteryPct%, Temp: $currentTemp°C")
         } else if (!isCharging && currentState.isCharging) {
             // Charger Disconnected
@@ -209,8 +201,14 @@ object ChargingIntelligenceEngine : Engine {
             handleDebouncedAnnouncement(context, assessment.effectiveClass)
 
             val targetReached = batteryPct >= currentState.targetChargePercent || status == BatteryManager.BATTERY_STATUS_FULL
-            val overchargeSec = if (targetReached) currentState.overchargeSeconds + 2 else 0L
-            val durSec = currentState.chargingDurationSeconds + 2
+            if (targetReached && targetReachedStartTime == 0L) {
+                targetReachedStartTime = now
+            } else if (!targetReached) {
+                targetReachedStartTime = 0L
+            }
+
+            val overchargeSec = if (targetReached && targetReachedStartTime > 0L) (now - targetReachedStartTime) / 1000 else 0L
+            val durSec = (now - sessionStartTime) / 1000
 
             val legacyType = when (assessment.effectiveClass) {
                 EffectiveChargingClass.FAST_EFFECTIVE -> ChargingType.FAST
@@ -388,17 +386,20 @@ object ChargingIntelligenceEngine : Engine {
     }
 
     private fun handleDebouncedAnnouncement(context: Context, newEffectiveClass: EffectiveChargingClass) {
-        if (newEffectiveClass == lastAnnouncedEffectiveClass) return
-
-        if (newEffectiveClass == pendingEffectiveClass) {
-            effectiveClassStabilityCounter++
-        } else {
-            pendingEffectiveClass = newEffectiveClass
-            effectiveClassStabilityCounter = 1
+        if (newEffectiveClass == lastAnnouncedEffectiveClass) {
+            pendingEffectiveClass = null
+            return
         }
 
-        // Require 3 consecutive evaluation cycles (6s) before announcing effective class shift
-        if (effectiveClassStabilityCounter >= 3) {
+        val now = System.currentTimeMillis()
+        if (newEffectiveClass != pendingEffectiveClass) {
+            pendingEffectiveClass = newEffectiveClass
+            classChangeTime = now
+            return
+        }
+
+        // Require stability for at least 5 seconds before announcing effective class shift
+        if (now - classChangeTime >= 5000L) {
             val event = when (newEffectiveClass) {
                 EffectiveChargingClass.FAST_EFFECTIVE -> NotificationEvent.FAST_CHARGING_DETECTED
                 EffectiveChargingClass.NORMAL_EFFECTIVE -> NotificationEvent.NORMAL_CHARGING_DETECTED
