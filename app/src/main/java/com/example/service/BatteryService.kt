@@ -173,8 +173,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     private var lastAlertTimeSpeed = 0L
     private var lastAlertTimeDrain = 0L
 
-    private var alarmMediaPlayer: android.media.MediaPlayer? = null
-    
     // Proximity Sensor
     private var proxSensor: Sensor? = null
     private var proxSensorEventListener: SensorEventListener? = null
@@ -233,7 +231,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     private var previousBrightnessMode: Int = 0 // 0: manual, 1: auto
     private var wasThermalStateCaptured = false
     private var thermalExecutionTaskId: String? = null
-    private var fullBatteryAnnouncementJob: Job? = null
 
     // Heat Monitoring Mode / Early Heat Warning variables
     private var isHeatMonitoringModeActive = false
@@ -776,6 +773,14 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             batteryTimeAtFullCharge = now
             fullChargeDuration = now - chargeStartTime
             isTrackingFullCharge = false
+            serviceScope.launch {
+                repository?.markActiveSessionFullyCharged(now)
+            }
+        } else if (isCharging && percentage >= 100) {
+            val now = System.currentTimeMillis()
+            serviceScope.launch {
+                repository?.markActiveSessionFullyCharged(now)
+            }
         }
 
         val chargingType = when (plugged) {
@@ -1075,95 +1080,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             }, 300)
         } catch (e: Throwable) {
             Log.e(TAG, "Error playing beep tone", e)
-        }
-    }
-
-    private fun startFullBatteryAlarm(settings: SettingsEntity, percentage: Int) {
-        // Evaluate Nighttime Deep Sleep policy: Suppress non-critical full battery alarm during night sleep window (e.g. 04:00 AM)
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepFullChargeVoiceEnabled) {
-            Log.i(TAG, "Full battery alarm suppressed by Nighttime Deep Sleep policy at $percentage%")
-            stopFullBatteryAlarm()
-            try {
-                repository?.logBatteryEventSync(
-                    eventType = "BATTERY_ALERT_SUPPRESSED_NIGHT_SLEEP",
-                    title = "Full Battery Alert Suppressed",
-                    details = "Full battery alarm at $percentage% suppressed during Nighttime Deep Sleep window.",
-                    category = "AUTOMATION",
-                    source = "DeepSleepEngine"
-                )
-            } catch (ignored: Exception) {}
-            return
-        }
-
-        // Continuous voice announcement repeating every 5 seconds while charging & at/above threshold
-        if (fullBatteryAnnouncementJob == null || fullBatteryAnnouncementJob?.isActive != true) {
-            fullBatteryAnnouncementJob?.cancel()
-            fullBatteryAnnouncementJob = serviceScope.launch {
-                while (isActive) {
-                    val isChargingNow = (getSystemService(Context.BATTERY_SERVICE) as? BatteryManager)?.isCharging ?: false
-                    if (!isChargingNow) {
-                        break
-                    }
-                    if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings)) {
-                        break
-                    }
-                    try {
-                        val params = android.os.Bundle().apply {
-                            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
-                        }
-                        VoiceAnnouncementOptimizer.speakWith1SecondCeiling(
-                            tts = tts,
-                            rawText = "Full charge",
-                            queueMode = TextToSpeech.QUEUE_FLUSH,
-                            params = params
-                        )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Full battery voice announcement error: ${e.message}")
-                    }
-                    delay(5000)
-                }
-            }
-        }
-
-        if (settings.fullBatteryAlarmOption == "ALARM_RING") {
-            if (alarmMediaPlayer == null) {
-                try {
-                    val alarmUri: android.net.Uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
-                        ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE)
-                    val mediaContext = applicationContext
-                    val audioAttributes = android.media.AudioAttributes.Builder()
-                        .setUsage(android.media.AudioAttributes.USAGE_ALARM)
-                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                    alarmMediaPlayer = android.media.MediaPlayer().apply {
-                        setDataSource(mediaContext, alarmUri)
-                        setAudioAttributes(audioAttributes)
-                        isLooping = true
-                        prepare()
-                        start()
-                    }
-                    Log.d(TAG, "Full battery alarm started playing.")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting full battery alarm with default alarm tone, trying fallback", e)
-                }
-            }
-        }
-    }
-
-    private fun stopFullBatteryAlarm() {
-        fullBatteryAnnouncementJob?.cancel()
-        fullBatteryAnnouncementJob = null
-        alarmMediaPlayer?.let {
-            try {
-                if (it.isPlaying) {
-                    it.stop()
-                }
-                it.release()
-                Log.d(TAG, "Full battery alarm stopped playing.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error stopping full battery alarm", e)
-            }
-            alarmMediaPlayer = null
         }
     }
 
@@ -1610,7 +1526,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         }
         isServiceRunning.value = false
         unregisterReceiver(batteryReceiver)
-        stopFullBatteryAlarm()
         adaptiveLocationManager?.stop()
         val sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         magneticFieldEventListener?.let { sensorManager.unregisterListener(it) }
@@ -2060,7 +1975,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                     com.example.engines.charging.DeterministicChargingEngine.recordSessionCompletion(applicationContext, finalAvgRatePctHr, lastChargingType)
                 }
                 serviceScope.launch {
-                    repository?.endActiveSession(sessionEndTime, percentage, avgPower = avgPowerVal)
+                    repository?.endActiveSession(sessionEndTime, percentage, avgPower = avgPowerVal, endTemp = temperature)
                     val chargeDurationSecs = (sessionEndTime - sessionStartTime) / 1000
                     repository?.insertTrendLog(
                         com.example.data.BatteryTrendLog(
@@ -2140,22 +2055,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             if (settings.lowBatteryEnabled) {
                 queueAnnouncement("Low Battery. $percentage percent.", AnnouncementCategory.BATTERY_MILESTONE, Priority.BATTERY_SAFETY, settings)
             }
-        }
-
-        // Battery complete announcements
-        if (percentage >= settings.fullBatteryThreshold && lastAnnouncedPercentage < settings.fullBatteryThreshold && isCharging) {
-            announceChargingComplete(settings)
-        }
-
-        // Full battery alarm (sounds continuously if plugged in and battery level >= full threshold, stops if unplugged)
-        if (isPlugged && percentage >= settings.fullBatteryThreshold) {
-            if (settings.fullBatteryAlarmEnabled) {
-                startFullBatteryAlarm(settings, percentage)
-            } else {
-                stopFullBatteryAlarm()
-            }
-        } else {
-            stopFullBatteryAlarm()
         }
 
         // Save state variables
@@ -2653,25 +2552,15 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun announceChargingComplete(settings: SettingsEntity) {
-        if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepFullChargeVoiceEnabled) {
-            Log.d(TAG, "Full battery announcement suppressed due to Deep Sleep Mode")
-            return
-        }
-        if (settings.batteryFullEnabled) {
-            queueAnnouncement("Full. 100", AnnouncementCategory.BATTERY_MILESTONE, Priority.BATTERY_SAFETY, settings)
-        }
-    }
-
     private fun checkIntervalAnnouncements(percentage: Int, isCharging: Boolean, settings: SettingsEntity) {
-        if (!isCharging) return
+        if (!isCharging || percentage == 100) return
         if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepStandardVoiceEnabled) return
         
         val interval = settings.announcementInterval
         if (interval <= 0) return
         
         val isAtInterval = percentage % interval == 0
-        val isAtCustom = percentage == settings.customPercentage
+        val isAtCustom = percentage == settings.customPercentage && percentage != 100
 
         if ((isAtInterval || isAtCustom) && percentage != lastAnnouncedPercentage) {
             if (settings.batteryPercentageEnabled) {
@@ -2681,7 +2570,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun checkMilestoneAnnouncements(percentage: Int, isCharging: Boolean, settings: SettingsEntity) {
-        if (!isCharging || percentage == lastAnnouncedPercentage) return
+        if (!isCharging || percentage == lastAnnouncedPercentage || percentage == 100) return
         if (com.example.engines.deepsleep.DeepSleepEngine.isDeepSleepActive(settings) && !settings.deepSleepMilestonesEnabled) return
 
         val shouldAnnounce = when (percentage) {
@@ -2691,12 +2580,11 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             80 -> settings.milestone80Enabled
             90 -> settings.milestone90Enabled
             95 -> settings.milestone95Enabled
-            100 -> settings.milestone100Enabled || settings.batteryFullEnabled
             else -> false
         }
 
         if (shouldAnnounce) {
-            val text = if (percentage == 100) "Battery is fully charged." else "Battery reached $percentage percent."
+            val text = "Battery reached $percentage percent."
             queueAnnouncement(text, AnnouncementCategory.BATTERY_MILESTONE, Priority.CHARGING_EVENTS, settings)
         }
     }

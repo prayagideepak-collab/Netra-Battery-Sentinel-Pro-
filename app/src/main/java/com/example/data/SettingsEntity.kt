@@ -33,7 +33,6 @@ data class SettingsEntity(
     // Individual Voice Announcement Toggles (v1.2 Patch)
     val chargerConnectedEnabled: Boolean = true,
     val chargerDisconnectedEnabled: Boolean = true,
-    val batteryFullEnabled: Boolean = true,
     val lowBatteryEnabled: Boolean = true,
     val batteryPercentageEnabled: Boolean = true,
     val tempWarningEnabled: Boolean = true,
@@ -46,7 +45,6 @@ data class SettingsEntity(
     val milestone80Enabled: Boolean = true,
     val milestone90Enabled: Boolean = true,
     val milestone95Enabled: Boolean = true,
-    val milestone100Enabled: Boolean = true,
 
     // Battery Health Alerts
     val healthDecliningAlertEnabled: Boolean = true,
@@ -61,7 +59,6 @@ data class SettingsEntity(
     val deepSleepStartTime: String = "08:00 PM",
     val deepSleepEndTime: String = "07:00 AM",
     val deepSleepStandardVoiceEnabled: Boolean = false,
-    val deepSleepFullChargeVoiceEnabled: Boolean = false,
     val deepSleepChargerVoiceEnabled: Boolean = false,
     val deepSleepMilestonesEnabled: Boolean = false,
     val deepSleepBackgroundTelemetryEnabled: Boolean = true,
@@ -77,8 +74,6 @@ data class SettingsEntity(
     
     // New Features: Run At Startup & Full Battery Alarm
     val runAtStartup: Boolean = true,
-    val fullBatteryAlarmEnabled: Boolean = true,
-    val fullBatteryAlarmOption: String = "ALARM_RING",
     
     // Low battery alerts for connected devices (v1.7)
     val connectedDevicesLowBatteryThreshold: Int = 15,

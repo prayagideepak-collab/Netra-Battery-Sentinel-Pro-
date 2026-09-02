@@ -129,7 +129,7 @@ object DeepSleepEngine {
                 !settings.deepSleepChargerVoiceEnabled
             }
             textLower.contains("full") || textLower.contains("100") -> {
-                !settings.deepSleepFullChargeVoiceEnabled
+                true // completely suppress
             }
             catLower.contains("milestone") || textLower.contains("percent") || textLower.contains("c ") || textLower.contains("d ") -> {
                 !settings.deepSleepMilestonesEnabled

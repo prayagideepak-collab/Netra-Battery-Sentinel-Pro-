@@ -270,6 +270,11 @@ class BatteryRepository(
         batteryDao.insertSettings(settings)
     }
 
+    private fun formatTime(timestamp: Long): String {
+        val sdf = java.text.SimpleDateFormat("hh mm ss a", java.util.Locale.US)
+        return sdf.format(java.util.Date(timestamp)).lowercase(java.util.Locale.US)
+    }
+
     suspend fun startSession(startTime: Long, startPercentage: Int, chargingType: String, temp: Float, isDischarge: Boolean = false, avgPower: Float = 0f) {
         val currentActive = batteryDao.getActiveSession()
         if (currentActive != null) {
@@ -278,16 +283,25 @@ class BatteryRepository(
                 endTime = startTime, 
                 endPercentage = startPercentage,
                 screenOnTimeMinutes = 0,
-                standbyTimeMinutes = 0
+                standbyTimeMinutes = 0,
+                endTemperature = temp,
+                formattedEndTime = formatTime(startTime),
+                totalDurationSeconds = (startTime - currentActive.startTime) / 1000,
+                sessionStatus = "INTERRUPTED"
             ))
         }
+        val formattedStart = formatTime(startTime)
         val newSession = ChargingSession(
             startTime = startTime,
             startPercentage = startPercentage,
             chargingType = chargingType,
             maxTemperature = temp,
             isDischarge = isDischarge,
-            avgPower = avgPower
+            avgPower = avgPower,
+            startTemperature = temp,
+            formattedStartTime = formattedStart,
+            sessionStatus = "ACTIVE",
+            createdTimestamp = startTime
         )
         batteryDao.insertSession(newSession)
     }
@@ -299,21 +313,49 @@ class BatteryRepository(
         }
     }
 
-    suspend fun endActiveSession(endTime: Long, endPercentage: Int, screenOnMinutes: Int = 0, standbyMinutes: Int = 0, avgPower: Float = 0f) {
+    suspend fun endActiveSession(endTime: Long, endPercentage: Int, screenOnMinutes: Int = 0, standbyMinutes: Int = 0, avgPower: Float = 0f, endTemp: Float = 0f) {
         val active = batteryDao.getActiveSession() ?: return
         
         // Define overnight as lasting > 3 hours and ending or running between 11 PM and 6 AM
         val durationMs = endTime - active.startTime
         val isOvernight = !active.isDischarge && durationMs > 3 * 60 * 60 * 1000 // Simple duration heuristic for a continuous charge session
         
+        val totalSecs = durationMs / 1000
+        val isFull = endPercentage >= 100 || active.startPercentage == 100 || (active.fullChargeTime ?: 0L) > 0L
+        val fullTime = active.fullChargeTime ?: if (endPercentage >= 100 && active.startPercentage < 100) endTime else null
+        val overchargeSecs = if (fullTime != null) {
+            ((endTime - fullTime) / 1000).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+
         batteryDao.updateSession(active.copy(
             endTime = endTime,
             endPercentage = endPercentage,
             isOvernight = isOvernight,
             screenOnTimeMinutes = screenOnMinutes,
             standbyTimeMinutes = standbyMinutes,
-            avgPower = if (avgPower > 0f) avgPower else active.avgPower
+            avgPower = if (avgPower > 0f) avgPower else active.avgPower,
+            endTemperature = endTemp,
+            formattedEndTime = formatTime(endTime),
+            totalDurationSeconds = totalSecs,
+            fullChargeTime = fullTime,
+            formattedFullChargeTime = fullTime?.let { formatTime(it) },
+            overchargingDurationSeconds = overchargeSecs,
+            fullyCharged = isFull,
+            sessionStatus = "COMPLETED"
         ))
+    }
+
+    suspend fun markActiveSessionFullyCharged(timestamp: Long) {
+        val active = batteryDao.getActiveSession() ?: return
+        if (active.fullChargeTime == null) {
+            batteryDao.updateSession(active.copy(
+                fullChargeTime = timestamp,
+                formattedFullChargeTime = formatTime(timestamp),
+                fullyCharged = true
+            ))
+        }
     }
     
     suspend fun getActiveSession(): ChargingSession? {

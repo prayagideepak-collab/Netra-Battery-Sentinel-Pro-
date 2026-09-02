@@ -17,5 +17,16 @@ data class ChargingSession(
     val isDischarge: Boolean = false,
     val avgPower: Float = 0f,
     val screenOnTimeMinutes: Int = 0,
-    val standbyTimeMinutes: Int = 0
+    val standbyTimeMinutes: Int = 0,
+    val startTemperature: Float = 0f,
+    val endTemperature: Float? = null,
+    val fullChargeTime: Long? = null,
+    val formattedStartTime: String = "",
+    val formattedFullChargeTime: String? = null,
+    val formattedEndTime: String? = null,
+    val totalDurationSeconds: Long = 0L,
+    val overchargingDurationSeconds: Long = 0L,
+    val fullyCharged: Boolean = false,
+    val sessionStatus: String = "ACTIVE", // ACTIVE, COMPLETED, INTERRUPTED
+    val createdTimestamp: Long = System.currentTimeMillis()
 )

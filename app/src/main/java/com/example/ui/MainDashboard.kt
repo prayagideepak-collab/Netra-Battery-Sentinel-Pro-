@@ -3916,14 +3916,7 @@ fun SettingsScreen(
                         onCheckedChange = { onSettingsChanged(settings.copy(chargerDisconnectedEnabled = it)) },
                         tag = "alert_charger_disconnected_switch"
                     )
-                    ToggleSettingsItem(
-                        icon = Icons.Filled.BatteryFull,
-                        title = "Battery Fully Charged Alert",
-                        description = "Announce when battery reaches 100% full capacity.",
-                        checked = settings.batteryFullEnabled,
-                        onCheckedChange = { onSettingsChanged(settings.copy(batteryFullEnabled = it)) },
-                        tag = "alert_battery_full_switch"
-                    )
+
                     ToggleSettingsItem(
                         icon = Icons.Filled.BatteryAlert,
                         title = "Low Battery Warning Alert",
@@ -3984,66 +3977,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
 
-                    // Full battery announcement and target threshold
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("FULL BATTERY ANNOUNCEMENT", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text("Threshold: ${settings.fullBatteryThreshold}%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                            }
-                            Switch(
-                                checked = settings.fullBatteryAlarmEnabled,
-                                onCheckedChange = { onSettingsChanged(settings.copy(fullBatteryAlarmEnabled = it)) },
-                                modifier = Modifier.testTag("full_battery_alarm_switch")
-                            )
-                        }
-                        Text(
-                            text = "Repeats voice announcement 'FULL CHARGE.' every 5s while connected at or above threshold.",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Slider(
-                            value = settings.fullBatteryThreshold.toFloat(),
-                            onValueChange = { onSettingsChanged(settings.copy(fullBatteryThreshold = it.toInt())) },
-                            valueRange = 70f..100f,
-                            steps = 5,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("full_battery_threshold_slider")
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            listOf(75, 80, 85, 90, 95, 100).forEach { threshold ->
-                                val isSelected = settings.fullBatteryThreshold == threshold
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                                        .clickable { onSettingsChanged(settings.copy(fullBatteryThreshold = threshold)) }
-                                        .padding(vertical = 8.dp)
-                                        .testTag("full_threshold_$threshold"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "$threshold%",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
 

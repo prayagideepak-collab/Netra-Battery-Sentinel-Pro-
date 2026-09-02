@@ -461,15 +461,7 @@ fun BatteryAndChargingCategoryView(
                     onSettingsChanged(settings.copy(fullBatteryThreshold = newT))
                 }
             )
-            SettingItem(
-                icon = Icons.Filled.Alarm,
-                iconColor = Color(0xFFFF9800),
-                title = "Full Battery Alarm",
-                subtitle = "Ring loud alarm when reaching full charge threshold",
-                isToggle = true,
-                toggleState = settings.fullBatteryAlarmEnabled,
-                onToggle = { onSettingsChanged(settings.copy(fullBatteryAlarmEnabled = it)) }
-            )
+
             SettingItem(
                 icon = Icons.Filled.AddAlert,
                 iconColor = Color(0xFFE91E63),
@@ -796,13 +788,7 @@ fun DeepSleepCategoryView(
                             onCheckedChange = { onSettingsChanged(settings.copy(deepSleepStandardVoiceEnabled = it)) }
                         )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
-                        PolicyToggleRow(
-                            feature = "Full-Charge 100% Voice",
-                            description = "Permit 100% charging completion voice / alarm",
-                            checked = settings.deepSleepFullChargeVoiceEnabled,
-                            onCheckedChange = { onSettingsChanged(settings.copy(deepSleepFullChargeVoiceEnabled = it)) }
-                        )
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+
                         PolicyToggleRow(
                             feature = "Charger Connect / Disconnect Voice",
                             description = "Permit charger plug-in / unplug voice announcements",
@@ -1008,15 +994,7 @@ fun VoiceAnnouncementsCategoryView(
                 toggleState = settings.chargerDisconnectedEnabled,
                 onToggle = { onSettingsChanged(settings.copy(chargerDisconnectedEnabled = it)) }
             )
-            SettingItem(
-                icon = Icons.Filled.BatteryChargingFull,
-                iconColor = Color(0xFF4CAF50),
-                title = "Full Battery 100% Announcement",
-                subtitle = "Vocalize when battery completes charging to 100%",
-                isToggle = true,
-                toggleState = settings.batteryFullEnabled,
-                onToggle = { onSettingsChanged(settings.copy(batteryFullEnabled = it)) }
-            )
+
             SettingItem(
                 icon = Icons.Filled.BatteryAlert,
                 iconColor = Color(0xFFF44336),
