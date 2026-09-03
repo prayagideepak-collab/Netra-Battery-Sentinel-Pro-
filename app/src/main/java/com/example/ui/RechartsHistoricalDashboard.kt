@@ -78,10 +78,17 @@ fun RechartsHistoricalDashboard(
     val points = remember(sessions, trendLogs, selectedTimeFrame) {
         val list = mutableListOf<RechartsDataPoint>()
         val now = System.currentTimeMillis()
-        val startTime = now - selectedTimeFrame.durationMs
 
         // 1. Convert Room trend logs
-        val filteredLogs = trendLogs.filter { it.timestamp >= startTime }.sortedBy { it.timestamp }
+        val filteredLogs = if (selectedTimeFrame == RechartsTimeFrame.TWENTY_FOUR_HOURS) {
+            val startTime = com.example.util.TimeManager.getStartOfLocalDay(now)
+            val endTime = com.example.util.TimeManager.getEndOfLocalDay(now)
+            trendLogs.filter { it.timestamp in startTime..endTime }.sortedBy { it.timestamp }
+        } else {
+            val startTime = now - selectedTimeFrame.durationMs
+            trendLogs.filter { it.timestamp >= startTime }.sortedBy { it.timestamp }
+        }
+
         filteredLogs.forEach { log ->
             val isCharging = log.dischargeRate <= 0f
             val temp = log.temperature
@@ -113,11 +120,11 @@ fun RechartsHistoricalDashboard(
 
     var selectedPointIndex by remember { mutableIntStateOf(-1) }
 
-    // Analytics summary
-    val peakTemp = remember(points) { points.maxOfOrNull { it.temperature } ?: 32f }
+    // Analytics summary - strictly computed without synthetic fallbacks
+    val peakTemp = remember(points) { points.maxOfOrNull { it.temperature } }
     val spikeCount = remember(points) { points.count { it.isSpike } }
-    val maxDrainRate = remember(points) { points.filter { !it.isCharging }.maxOfOrNull { it.dischargeRate } ?: 0f }
-    val avgTemp = remember(points) { if (points.isNotEmpty()) points.map { it.temperature }.average().toFloat() else 30f }
+    val maxDrainRate = remember(points) { points.filter { !it.isCharging }.maxOfOrNull { it.dischargeRate } }
+    val avgTemp = remember(points) { if (points.isNotEmpty()) points.map { it.temperature }.average().toFloat() else null }
 
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -246,7 +253,7 @@ fun RechartsHistoricalDashboard(
             // Card A: Battery Level (%) Independent Graph
             HistoricalMetricCard(
                 title = "Battery Level (%)",
-                currentValue = "${points.lastOrNull()?.level?.toInt() ?: 0}%",
+                currentValue = points.lastOrNull()?.let { "${it.level.toInt()}%" } ?: "Unavailable",
                 unit = "0% - 100%",
                 lineColor = primaryColor,
                 points = points,
@@ -265,7 +272,7 @@ fun RechartsHistoricalDashboard(
             // Card B: Safety Sensor Temperature (°C) Independent Graph
             HistoricalMetricCard(
                 title = "Safety Sensor Temperature (°C)",
-                currentValue = "${String.format(Locale.US, "%.1f", points.lastOrNull()?.temperature ?: 30f)}°C",
+                currentValue = points.lastOrNull()?.let { String.format(Locale.US, "%.1f°C", it.temperature) } ?: "Unavailable",
                 unit = "20°C - 50°C",
                 lineColor = Color(0xFFFF5722),
                 points = points,
@@ -307,10 +314,10 @@ fun RechartsHistoricalDashboard(
                     Text("Peak Sensor Temp", fontSize = 10.sp, color = onSurfaceVariant)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${String.format(Locale.US, "%.1f", peakTemp)}°C",
+                        text = peakTemp?.let { String.format(Locale.US, "%.1f°C", it) } ?: "Unavailable",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (peakTemp >= 42f) Color(0xFFD32F2F) else if (peakTemp >= 38f) Color(0xFFFF9800) else Color(0xFF4CAF50)
+                        color = if ((peakTemp ?: 0f) >= 42f) Color(0xFFD32F2F) else if ((peakTemp ?: 0f) >= 38f) Color(0xFFFF9800) else Color(0xFF4CAF50)
                     )
                 }
 
@@ -343,7 +350,7 @@ fun RechartsHistoricalDashboard(
                     Text("Avg Sensor Temp", fontSize = 10.sp, color = onSurfaceVariant)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${String.format(Locale.US, "%.1f", avgTemp)}°C",
+                        text = avgTemp?.let { String.format(Locale.US, "%.1f°C", it) } ?: "Unavailable",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.onSurface

@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -328,284 +330,351 @@ fun Battery24hHistoryGraph(
     history: List<com.example.data.BatteryHistoryEntity>,
     currentLevel: Int,
     currentIsCharging: Boolean,
+    selectedDateMs: Long = System.currentTimeMillis(),
+    onPreviousDayClick: () -> Unit = {},
+    onNextDayClick: () -> Unit = {},
+    onTodayClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     val chargeColor = Color(0xFF00E676)
     val abnormalDropColor = Color(0xFFFF1744)
 
-    if (history.size < 2) {
-        Box(
-            modifier = modifier
+    val startTimestamp = com.example.util.TimeManager.getStartOfLocalDay(selectedDateMs)
+    val endTimestamp = com.example.util.TimeManager.getEndOfLocalDay(selectedDateMs)
+    val isToday = com.example.util.TimeManager.isToday(selectedDateMs)
+    val dateDisplayStr = if (isToday) "Today, ${com.example.util.TimeManager.formatCalendarDate(selectedDateMs)}" else com.example.util.TimeManager.formatCalendarDate(selectedDateMs)
+
+    // Filter samples strictly in the selected calendar day
+    val samplesForDate = history.filter { it.timestamp in startTimestamp..endTimestamp }.sortedBy { it.timestamp }
+
+    var touchedIndex by remember(samplesForDate) { mutableStateOf<Int?>(null) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Date Navigation Bar & Header
+        Row(
+            modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
-                Icon(
-                    imageVector = androidx.compose.material.icons.Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    modifier = Modifier.size(32.dp)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Insufficient historical data",
+                    text = "Battery usage (24-Hour Calendar Day)",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "No historical telemetry points found in the last 24 hours. Please keep Netra active.",
+                    text = dateDisplayStr,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onPreviousDayClick,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("btn_prev_day")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Previous Day",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                if (!isToday) {
+                    TextButton(
+                        onClick = onTodayClick,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier
+                            .height(28.dp)
+                            .testTag("btn_today")
+                    ) {
+                        Text(
+                            text = "Today",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onNextDayClick,
+                    enabled = !isToday,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("btn_next_day")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "Next Day",
+                        tint = if (!isToday) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
-        return
-    }
 
-    val now = System.currentTimeMillis()
-    val endTimestamp = now
-    val startTimestamp = now - 24 * 3600_000L
-
-    // Filter samples strictly in the last 24 hours
-    val samples24h = history.filter { it.timestamp in startTimestamp..endTimestamp }.sortedBy { it.timestamp }
-
-    if (samples24h.size < 2) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Insufficient historical data",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        return
-    }
-
-    var touchedIndex by remember(samples24h) { mutableStateOf<Int?>(null) }
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "Battery usage (last 24 hours)",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-        ) {
-            Canvas(
+        if (samplesForDate.isEmpty()) {
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(samples24h) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val position = event.changes.firstOrNull()?.position
-                                if (position != null && event.changes.any { it.pressed }) {
-                                    val leftPadding = 32.dp.toPx()
-                                    val rightPadding = 16.dp.toPx()
-                                    val drawWidth = size.width - leftPadding - rightPadding
-                                    
-                                    val xRelative = position.x - leftPadding
-                                    val pct = (xRelative / drawWidth).coerceIn(0f, 1f)
-                                    val approxTimestamp = startTimestamp + (pct * (24 * 3600_000L)).toLong()
-                                    
-                                    val closest = samples24h.minByOrNull { Math.abs(it.timestamp - approxTimestamp) }
-                                    if (closest != null) {
-                                        touchedIndex = samples24h.indexOf(closest)
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "No battery telemetry recorded for this date.",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "No historical telemetry points found for $dateDisplayStr.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(samplesForDate) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val position = event.changes.firstOrNull()?.position
+                                    if (position != null && event.changes.any { it.pressed }) {
+                                        val leftPadding = 32.dp.toPx()
+                                        val rightPadding = 16.dp.toPx()
+                                        val drawWidth = size.width - leftPadding - rightPadding
+                                        
+                                        val xRelative = position.x - leftPadding
+                                        val pct = (xRelative / drawWidth).coerceIn(0f, 1f)
+                                        val approxTimestamp = startTimestamp + (pct * (24 * 3600_000L)).toLong()
+                                        
+                                        val closest = samplesForDate.minByOrNull { Math.abs(it.timestamp - approxTimestamp) }
+                                        if (closest != null) {
+                                            touchedIndex = samplesForDate.indexOf(closest)
+                                        }
+                                    } else {
+                                        touchedIndex = null
                                     }
-                                } else {
-                                    touchedIndex = null
                                 }
                             }
                         }
-                    }
-            ) {
-                val width = size.width
-                val height = size.height
+                ) {
+                    val width = size.width
+                    val height = size.height
 
-                val leftPadding = 32.dp.toPx()
-                val rightPadding = 16.dp.toPx()
-                val topPadding = 16.dp.toPx()
-                val bottomPadding = 16.dp.toPx()
+                    val leftPadding = 32.dp.toPx()
+                    val rightPadding = 16.dp.toPx()
+                    val topPadding = 16.dp.toPx()
+                    val bottomPadding = 16.dp.toPx()
 
-                val drawWidth = width - leftPadding - rightPadding
-                val drawHeight = height - topPadding - bottomPadding
+                    val drawWidth = width - leftPadding - rightPadding
+                    val drawHeight = height - topPadding - bottomPadding
 
-                // Draw Y Axis grid lines and labels (0%, 50%, 100%)
-                val yGridLevels = listOf(0f, 0.5f, 1f)
-                yGridLevels.forEach { level ->
-                    val y = topPadding + (1f - level) * drawHeight
-                    drawLine(
-                        color = Color.Gray.copy(alpha = 0.2f),
-                        start = Offset(leftPadding, y),
-                        end = Offset(width - rightPadding, y),
-                        strokeWidth = 1.dp.toPx(),
-                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
-                    )
-
-                    // Y labels
-                    drawContext.canvas.nativeCanvas.drawText(
-                        "${(level * 100).toInt()}%",
-                        8.dp.toPx(),
-                        y + 4.dp.toPx(),
-                        android.graphics.Paint().apply {
-                            color = android.graphics.Color.GRAY
-                            textSize = 10.sp.toPx()
-                            isAntiAlias = true
-                        }
-                    )
-                }
-
-                // Map points to canvas coordinates
-                val points = samples24h.map { sample ->
-                    val x = leftPadding + (sample.timestamp - startTimestamp).toFloat() / (24 * 3600_000f) * drawWidth
-                    val y = topPadding + (1f - (sample.batteryLevel / 100f)) * drawHeight
-                    Offset(x, y)
-                }
-
-                // Draw segments with visual colors and gap-handling
-                for (i in 1 until samples24h.size) {
-                    val prev = samples24h[i - 1]
-                    val curr = samples24h[i]
-
-                    // Gaps in telemetry: do NOT draw line if time diff > 3 hours
-                    if (curr.timestamp - prev.timestamp > 3 * 3600_000L) {
-                        continue
-                    }
-
-                    val color = when {
-                        prev.isCharging && curr.isCharging -> chargeColor
-                        else -> {
-                            val timeHours = (curr.timestamp - prev.timestamp) / 3600_000f
-                            val drop = prev.batteryLevel - curr.batteryLevel
-                            val dropRate = if (timeHours > 0.01f) drop / timeHours else 0f
-                            if (dropRate >= 18f) abnormalDropColor else primaryColor
-                        }
-                    }
-
-                    drawLine(
-                        color = color,
-                        start = points[i - 1],
-                        end = points[i],
-                        strokeWidth = 3.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-
-                // Draw current point indicator at the end of the graph
-                val lastOffset = points.last()
-                drawCircle(
-                    color = if (currentIsCharging) chargeColor else primaryColor,
-                    radius = 6.dp.toPx(),
-                    center = lastOffset
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = 3.dp.toPx(),
-                    center = lastOffset
-                )
-
-                // Draw touched point indicator & vertical guideline
-                touchedIndex?.let { index ->
-                    if (index in points.indices) {
-                        val offset = points[index]
+                    // Draw Y Axis grid lines and labels (0%, 50%, 100%)
+                    val yGridLevels = listOf(0f, 0.5f, 1f)
+                    yGridLevels.forEach { level ->
+                        val y = topPadding + (1f - level) * drawHeight
                         drawLine(
-                            color = Color.Gray.copy(alpha = 0.4f),
-                            start = Offset(offset.x, topPadding),
-                            end = Offset(offset.x, height - bottomPadding),
+                            color = Color.Gray.copy(alpha = 0.2f),
+                            start = Offset(leftPadding, y),
+                            end = Offset(width - rightPadding, y),
                             strokeWidth = 1.dp.toPx(),
-                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
                         )
+
+                        // Y labels
+                        drawContext.canvas.nativeCanvas.drawText(
+                            "${(level * 100).toInt()}%",
+                            8.dp.toPx(),
+                            y + 4.dp.toPx(),
+                            android.graphics.Paint().apply {
+                                color = android.graphics.Color.GRAY
+                                textSize = 10.sp.toPx()
+                                isAntiAlias = true
+                            }
+                        )
+                    }
+
+                    // Map points to canvas coordinates across 24h calendar day (0h to 24h)
+                    val points = samplesForDate.map { sample ->
+                        val x = leftPadding + ((sample.timestamp - startTimestamp).toFloat() / (24 * 3600_000f)).coerceIn(0f, 1f) * drawWidth
+                        val y = topPadding + (1f - (sample.batteryLevel / 100f)) * drawHeight
+                        Offset(x, y)
+                    }
+
+                    if (samplesForDate.size == 1) {
+                        // Single point on the 24-hour timeline
+                        val singlePoint = points[0]
+                        val sample = samplesForDate[0]
                         drawCircle(
-                            color = primaryColor,
+                            color = if (sample.isCharging) chargeColor else primaryColor,
                             radius = 6.dp.toPx(),
-                            center = offset
+                            center = singlePoint
                         )
                         drawCircle(
                             color = Color.White,
                             radius = 3.dp.toPx(),
-                            center = offset
+                            center = singlePoint
                         )
-                    }
-                }
-            }
+                    } else {
+                        // Draw segments with visual colors and gap-handling
+                        for (i in 1 until samplesForDate.size) {
+                            val prev = samplesForDate[i - 1]
+                            val curr = samplesForDate[i]
 
-            // Interactive Tooltip overlay
-            touchedIndex?.let { index ->
-                if (index in samples24h.indices) {
-                    val sample = samples24h[index]
-                    val sdf = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault())
-                    val timeStr = sdf.format(java.util.Date(sample.timestamp))
+                            // Gaps in telemetry: do NOT draw line if time diff > 3 hours
+                            if (curr.timestamp - prev.timestamp > 3 * 3600_000L) {
+                                continue
+                            }
 
-                    val tooltipText = buildString {
-                        append("Battery: ${sample.batteryLevel}%\n")
-                        append("Time: $timeStr\n")
-                        append("State: ${if (sample.isCharging) "Charging" else "Discharging"}\n")
-                        append("Temp: ${String.format(java.util.Locale.US, "%.1f", sample.temperature)}°C\n")
-                        append("Voltage: ${String.format(java.util.Locale.US, "%.2f", sample.voltageMv / 1000f)}V\n")
-                        append("Current: ${sample.currentNowMa}mA")
-                    }
+                            val color = when {
+                                prev.isCharging && curr.isCharging -> chargeColor
+                                else -> {
+                                    val timeHours = (curr.timestamp - prev.timestamp) / 3600_000f
+                                    val drop = prev.batteryLevel - curr.batteryLevel
+                                    val dropRate = if (timeHours > 0.01f) drop / timeHours else 0f
+                                    if (dropRate >= 18f) abnormalDropColor else primaryColor
+                                }
+                            }
 
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            text = tooltipText,
+                            drawLine(
+                                color = color,
+                                start = points[i - 1],
+                                end = points[i],
+                                strokeWidth = 3.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+                        }
+
+                        // Draw latest valid point indicator for this selected date
+                        val lastOffset = points.last()
+                        val lastSample = samplesForDate.last()
+                        drawCircle(
+                            color = if (lastSample.isCharging) chargeColor else primaryColor,
+                            radius = 6.dp.toPx(),
+                            center = lastOffset
+                        )
+                        drawCircle(
                             color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            radius = 3.dp.toPx(),
+                            center = lastOffset
                         )
+                    }
+
+                    // Draw touched point indicator & vertical guideline
+                    touchedIndex?.let { index ->
+                        if (index in points.indices) {
+                            val offset = points[index]
+                            drawLine(
+                                color = Color.Gray.copy(alpha = 0.4f),
+                                start = Offset(offset.x, topPadding),
+                                end = Offset(offset.x, height - bottomPadding),
+                                strokeWidth = 1.dp.toPx(),
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                            )
+                            drawCircle(
+                                color = primaryColor,
+                                radius = 6.dp.toPx(),
+                                center = offset
+                            )
+                            drawCircle(
+                                color = Color.White,
+                                radius = 3.dp.toPx(),
+                                center = offset
+                            )
+                        }
+                    }
+                }
+
+                // Interactive Tooltip overlay
+                touchedIndex?.let { index ->
+                    if (index in samplesForDate.indices) {
+                        val sample = samplesForDate[index]
+                        val sdf = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault())
+                        val timeStr = sdf.format(java.util.Date(sample.timestamp))
+
+                        val tooltipText = buildString {
+                            append("Date: ${com.example.util.TimeManager.formatCalendarDate(sample.timestamp)}\n")
+                            append("Battery: ${sample.batteryLevel}%\n")
+                            append("Time: $timeStr\n")
+                            append("State: ${if (sample.isCharging) "Charging" else "Discharging"}\n")
+                            if (sample.chargingType.isNotBlank() && sample.chargingType != "None") {
+                                append("Type: ${sample.chargingType}\n")
+                            }
+                            append("Temp: ${String.format(java.util.Locale.US, "%.1f", sample.temperature)}°C\n")
+                            append("Voltage: ${if (sample.voltageMv > 0) String.format(java.util.Locale.US, "%.2fV", sample.voltageMv / 1000f) else "Unavailable"}\n")
+                            append("Current: ${sample.currentNowMa}mA")
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = tooltipText,
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        // Draw rolling 24-hour timeline labels at the bottom
-        Spacer(modifier = Modifier.height(4.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val sdf = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault())
-            val time1 = sdf.format(java.util.Date(startTimestamp))
-            val time2 = sdf.format(java.util.Date(startTimestamp + 6 * 3600_000L))
-            val time3 = sdf.format(java.util.Date(startTimestamp + 12 * 3600_000L))
-            val time4 = sdf.format(java.util.Date(startTimestamp + 18 * 3600_000L))
-            val timeCurrent = "Current"
+            // Draw 24-Hour calendar timeline labels at the bottom (00:00 to 24:00)
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 32.dp, end = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val labels = listOf("12:00 AM", "04:00 AM", "08:00 AM", "12:00 PM", "04:00 PM", "08:00 PM", "11:59 PM")
 
-            listOf(time1, time2, time3, time4, timeCurrent).forEach { label ->
-                Text(
-                    text = label,
-                    fontSize = 9.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    fontWeight = FontWeight.Medium
-                )
+                labels.forEach { label ->
+                    Text(
+                        text = label,
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
@@ -663,6 +732,10 @@ fun TelemetryStatBox(
 fun AuthoritativeBatteryRuntimeCard(
     batteryStateState: androidx.compose.runtime.State<com.example.service.BatteryState>,
     history24h: List<com.example.data.BatteryHistoryEntity>,
+    selectedDateMs: Long = System.currentTimeMillis(),
+    onPreviousDayClick: () -> Unit = {},
+    onNextDayClick: () -> Unit = {},
+    onTodayClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state by batteryStateState
@@ -673,6 +746,13 @@ fun AuthoritativeBatteryRuntimeCard(
     } else {
         if (percentage >= 100 && isCharging) "Fully Charged" else "Calculating..."
     }
+
+    val startTimestamp = com.example.util.TimeManager.getStartOfLocalDay(selectedDateMs)
+    val endTimestamp = com.example.util.TimeManager.getEndOfLocalDay(selectedDateMs)
+    val isToday = com.example.util.TimeManager.isToday(selectedDateMs)
+
+    // Filter samples strictly in the selected calendar day
+    val dateSamples = history24h.filter { it.timestamp in startTimestamp..endTimestamp }.sortedBy { it.timestamp }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -743,17 +823,21 @@ fun AuthoritativeBatteryRuntimeCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // The beautiful 24h rolling history graph
+            // The calendar-day 24h history graph
             Battery24hHistoryGraph(
                 history = history24h,
                 currentLevel = percentage,
                 currentIsCharging = isCharging,
+                selectedDateMs = selectedDateMs,
+                onPreviousDayClick = onPreviousDayClick,
+                onNextDayClick = onNextDayClick,
+                onTodayClick = onTodayClick,
                 modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 24h Detailed Statistics
+            // 24h Detailed Statistics for the Selected Calendar Day
             Text(
                 text = "24-Hour Telemetry Statistics",
                 style = MaterialTheme.typography.titleSmall,
@@ -762,50 +846,55 @@ fun AuthoritativeBatteryRuntimeCard(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            // Calculations based on the 24h history
-            val batteryMin = if (history24h.isNotEmpty()) history24h.minOf { it.batteryLevel } else percentage
-            val batteryMax = if (history24h.isNotEmpty()) history24h.maxOf { it.batteryLevel } else percentage
+            // Date-Isolated Calculations: strictly using dateSamples without fake fallbacks
+            val batteryCurrent = dateSamples.lastOrNull()?.let { "${it.batteryLevel}%" } ?: (if (isToday) "$percentage%" else "Unavailable")
+            val batteryMin = dateSamples.minOfOrNull { it.batteryLevel }?.let { "$it%" } ?: "Unavailable"
+            val batteryMax = dateSamples.maxOfOrNull { it.batteryLevel }?.let { "$it%" } ?: "Unavailable"
 
-            val tempMin = if (history24h.isNotEmpty()) history24h.minOf { it.temperature } else state.temperature
-            val tempMax = if (history24h.isNotEmpty()) history24h.maxOf { it.temperature } else state.temperature
+            val tempCurrent = dateSamples.lastOrNull()?.let { String.format(java.util.Locale.US, "%.1f°C", it.temperature) } ?: (if (isToday && state.temperature > 0) "${String.format(java.util.Locale.US, "%.1f", state.temperature)}°C" else "Unavailable")
+            val tempMin = dateSamples.minOfOrNull { it.temperature }?.let { String.format(java.util.Locale.US, "%.1f°C", it) } ?: "Unavailable"
+            val tempMax = dateSamples.maxOfOrNull { it.temperature }?.let { String.format(java.util.Locale.US, "%.1f°C", it) } ?: "Unavailable"
 
-            val voltMin = if (history24h.isNotEmpty()) history24h.minOf { it.voltageMv } / 1000f else (state.voltage / 1000f)
-            val voltMax = if (history24h.isNotEmpty()) history24h.maxOf { it.voltageMv } / 1000f else (state.voltage / 1000f)
+            val validVolts = dateSamples.filter { it.voltageMv > 0 }
+            val voltCurrent = validVolts.lastOrNull()?.let { String.format(java.util.Locale.US, "%.2fV", it.voltageMv / 1000f) } ?: (if (isToday && state.voltage > 0) "${String.format(java.util.Locale.US, "%.2f", state.voltage / 1000f)}V" else "Unavailable")
+            val voltMin = validVolts.minOfOrNull { it.voltageMv }?.let { String.format(java.util.Locale.US, "%.2fV", it / 1000f) } ?: "Unavailable"
+            val voltMax = validVolts.maxOfOrNull { it.voltageMv }?.let { String.format(java.util.Locale.US, "%.2fV", it / 1000f) } ?: "Unavailable"
 
-            val currMin = if (history24h.isNotEmpty()) history24h.minOf { it.currentNowMa } else state.currentNow
-            val currMax = if (history24h.isNotEmpty()) history24h.maxOf { it.currentNowMa } else state.currentNow
+            val currCurrent = dateSamples.lastOrNull()?.let { "${it.currentNowMa}mA" } ?: (if (isToday) "${state.currentNow}mA" else "Unavailable")
+            val currMin = dateSamples.minOfOrNull { it.currentNowMa }?.let { "${it}mA" } ?: "Unavailable"
+            val currMax = dateSamples.maxOfOrNull { it.currentNowMa }?.let { "${it}mA" } ?: "Unavailable"
 
             // Grid Layout
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TelemetryStatBox(
                         title = "Battery Level",
-                        current = "$percentage%",
-                        min = "$batteryMin%",
-                        max = "$batteryMax%",
+                        current = batteryCurrent,
+                        min = batteryMin,
+                        max = batteryMax,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryStatBox(
                         title = "Temperature",
-                        current = "${String.format(java.util.Locale.US, "%.1f", state.temperature)}°C",
-                        min = "${String.format(java.util.Locale.US, "%.1f", tempMin)}°C",
-                        max = "${String.format(java.util.Locale.US, "%.1f", tempMax)}°C",
+                        current = tempCurrent,
+                        min = tempMin,
+                        max = tempMax,
                         modifier = Modifier.weight(1f)
                     )
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TelemetryStatBox(
                         title = "Voltage",
-                        current = "${String.format(java.util.Locale.US, "%.2f", state.voltage / 1000f)}V",
-                        min = "${String.format(java.util.Locale.US, "%.2f", voltMin)}V",
-                        max = "${String.format(java.util.Locale.US, "%.2f", voltMax)}V",
+                        current = voltCurrent,
+                        min = voltMin,
+                        max = voltMax,
                         modifier = Modifier.weight(1f)
                     )
                     TelemetryStatBox(
                         title = "Current Flow",
-                        current = "${state.currentNow}mA",
-                        min = "${currMin}mA",
-                        max = "${currMax}mA",
+                        current = currCurrent,
+                        min = currMin,
+                        max = currMax,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1302,11 +1391,16 @@ fun MonitorScreen(
         )
 
         val history24h by viewModel.batteryHistory24h.collectAsStateWithLifecycle()
+        val selectedCalendarDate by viewModel.selectedCalendarDate.collectAsStateWithLifecycle()
 
-        // Authoritative Battery Runtime Card
+        // Authoritative Battery Runtime Card with Calendar-Day Navigation
         AuthoritativeBatteryRuntimeCard(
             batteryStateState = batteryStateState,
             history24h = history24h,
+            selectedDateMs = selectedCalendarDate,
+            onPreviousDayClick = { viewModel.selectPreviousDay() },
+            onNextDayClick = { viewModel.selectNextDay() },
+            onTodayClick = { viewModel.selectToday() },
             modifier = Modifier.padding(bottom = 16.dp)
         )
         

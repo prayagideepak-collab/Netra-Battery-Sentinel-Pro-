@@ -112,4 +112,71 @@ object TimeManager {
         return dischargeMinutes?.let { it * 60L * 1000L } ?: -1L
     }
 
+    /**
+     * Timezone-safe start of local calendar day (00:00:00.000)
+     */
+    fun getStartOfLocalDay(timeMs: Long = System.currentTimeMillis()): Long {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timeMs
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
+    }
+
+    /**
+     * Timezone-safe end of local calendar day (23:59:59.999)
+     */
+    fun getEndOfLocalDay(timeMs: Long = System.currentTimeMillis()): Long {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timeMs
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        calendar.set(Calendar.MILLISECOND, 999)
+        return calendar.timeInMillis
+    }
+
+    /**
+     * Timezone-safe start of next local calendar day (00:00:00.000 next day)
+     */
+    fun getStartOfNextLocalDay(timeMs: Long = System.currentTimeMillis()): Long {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timeMs
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        calendar.add(Calendar.DAY_OF_YEAR, 1)
+        return calendar.timeInMillis
+    }
+
+    /**
+     * Formats calendar date in readable form (e.g. "03 Sep 2026")
+     */
+    fun formatCalendarDate(timeMs: Long): String {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timeMs
+        val sdf = SimpleDateFormat("dd MMM yyyy", Locale.US)
+        return sdf.format(calendar.time)
+    }
+
+    /**
+     * Checks if given timestamp falls on the local calendar day of today
+     */
+    fun isToday(timeMs: Long): Boolean {
+        return getStartOfLocalDay(System.currentTimeMillis()) == getStartOfLocalDay(timeMs)
+    }
+
+    /**
+     * Moves timestamp by day offset (+1 or -1) in local timezone
+     */
+    fun addDaysToTimestamp(timeMs: Long, days: Int): Long {
+        val calendar = Calendar.getInstance()
+        calendar.timeInMillis = timeMs
+        calendar.add(Calendar.DAY_OF_YEAR, days)
+        return getStartOfLocalDay(calendar.timeInMillis)
+    }
 }
+
