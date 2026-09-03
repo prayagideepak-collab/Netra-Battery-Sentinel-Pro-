@@ -52,7 +52,7 @@ object SafeDeviceInfoProvider {
 
         val realmeUi = detectRealmeUiVersion()
         val soc = if (isRmx3471) "Snapdragon 695 5G" else detectSocName(hardware, board)
-        val batteryCap = if (isRmx3471) 5000 else detectBatteryCapacity(context)
+        val batteryCap = if (isRmx3471) 5000 else (detectBatteryCapacity(context) ?: 0)
 
         val serialStatus = "Restricted / Hardware ID Not Accessible (Normal Security State)"
 
@@ -100,17 +100,9 @@ object SafeDeviceInfoProvider {
         }
     }
 
-    private fun detectBatteryCapacity(context: Context): Int {
-        return try {
-            val powerProfileClass = Class.forName("com.android.internal.os.PowerProfile")
-            val powerProfile = powerProfileClass.getConstructor(Context::class.java).newInstance(context)
-            val capacity = powerProfileClass
-                .getMethod("getBatteryCapacity")
-                .invoke(powerProfile) as Double
-            if (capacity > 0) capacity.toInt() else 5000
-        } catch (e: Exception) {
-            5000
-        }
+    private fun detectBatteryCapacity(context: Context): Int? {
+        val validated = com.example.battery.engine.BatteryCapacityEngine.detectValidatedCapacity(context)
+        return validated.capacityMah
     }
 
     private fun getSystemProperty(key: String): String {

@@ -7,8 +7,8 @@ import androidx.room.PrimaryKey
 data class AppVersionEntity(
     @PrimaryKey
     val id: Int = 1,
-    val versionCode: Int = 309,
-    val versionName: String = "3.4.2-calendar-day-graph",
+    val versionCode: Int = 310,
+    val versionName: String = "3.5.0-unified-graph-system",
     val lastUpdatedTimestamp: Long = System.currentTimeMillis(),
-    val changeDescription: String = "Authoritative SQL Database version: Task 04 Calendar-Day 24-Hour Graph & System Audit"
+    val changeDescription: String = "Authoritative SQL Database version: Task 04 Unified Graph System Redesign, Calendar-Day History & Systematic Audit"
 )

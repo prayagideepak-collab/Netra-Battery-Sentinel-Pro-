@@ -50,6 +50,10 @@ fun DashboardSection(
     val systemStatus by viewModel.systemStatus.collectAsStateWithLifecycle()
     val syncState by viewModel.universalSyncState.collectAsStateWithLifecycle()
 
+    val history24h by viewModel.batteryHistory24h.collectAsStateWithLifecycle()
+    val trendLogs by viewModel.allTrendLogs.collectAsStateWithLifecycle(emptyList())
+    val selectedCalendarDate by viewModel.selectedCalendarDate.collectAsStateWithLifecycle()
+
     var selectedMetricDialog by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
 
@@ -438,68 +442,39 @@ fun DashboardSection(
         }
     }
 
-    // Modal Inspection Dialog
-    selectedMetricDialog?.let { metric ->
-        AlertDialog(
+    // Modal Inspection Full-Screen Dialog with Unified Graph System
+    selectedMetricDialog?.let { metricName ->
+        val metricType = when (metricName) {
+            "VOLTAGE" -> NetraMetricType.VOLTAGE
+            "TEMPERATURE" -> NetraMetricType.TEMPERATURE
+            "CURRENT" -> NetraMetricType.CURRENT
+            "POWER" -> NetraMetricType.POWER
+            else -> NetraMetricType.BATTERY_LEVEL
+        }
+
+        androidx.compose.ui.window.Dialog(
             onDismissRequest = { selectedMetricDialog = null },
-            confirmButton = {
-                TextButton(onClick = { selectedMetricDialog = null }) {
-                    Text("Close")
-                }
-            },
-            title = {
-                Text(
-                    text = "Live $metric Telemetry",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
+            properties = androidx.compose.ui.window.DialogProperties(
+                usePlatformDefaultWidth = false
+            )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                NetraUnifiedMetricScreen(
+                    metricType = metricType,
+                    state = state,
+                    history24h = history24h,
+                    trendLogs = trendLogs,
+                    selectedCalendarDate = selectedCalendarDate,
+                    onPreviousDay = { viewModel.selectPreviousDay() },
+                    onNextDay = { viewModel.selectNextDay() },
+                    onToday = { viewModel.selectToday() },
+                    onClose = { selectedMetricDialog = null }
                 )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Real-time hardware sensor readings continuously sampled directly from Android kernel and power IC drivers.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Divider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Current State:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Text(if (state.isCharging) "Charging (${state.chargingType})" else "Discharging (System Load)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Voltage:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Text("${state.voltage} mV (${String.format(java.util.Locale.US, "%.3f", state.voltage / 1000f)} V)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Current Flow:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Text("${if (state.isCharging) "+" else ""}${state.currentNow} mA", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Wattage:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Text(String.format(java.util.Locale.US, "%.2f W", state.powerWatt), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Cell Temperature:", fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Text("${state.temperature} °C", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
             }
-        )
+        }
     }
 }
 

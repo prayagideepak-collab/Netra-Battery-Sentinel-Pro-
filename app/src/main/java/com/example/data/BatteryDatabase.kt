@@ -61,9 +61,9 @@ abstract class BatteryDatabase : RoomDatabase() {
                     BatteryDatabaseMigrations.MIGRATION_40_41,
                     BatteryDatabaseMigrations.MIGRATION_41_42,
                     BatteryDatabaseMigrations.MIGRATION_42_43,
-                    BatteryDatabaseMigrations.MIGRATION_43_44
+                    BatteryDatabaseMigrations.MIGRATION_43_44,
+                    BatteryDatabaseMigrations.MIGRATION_44_45
                 )
-                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

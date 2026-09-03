@@ -392,7 +392,6 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                     }
                 }
                 Intent.ACTION_USER_PRESENT -> {
-                    checkFullChargeAnnouncement()
                     com.example.engines.coordinator.NetraMultiMechanismCoordinator.onScreenOnOrUnlocked(context)
                 }
             }
@@ -1337,36 +1336,14 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun checkFullChargeAnnouncement() {
-        if (batteryTimeAtFullCharge > 0 && fullChargeDuration > 0) {
-            val dateFormat = java.text.SimpleDateFormat("HH:mm", Locale.getDefault())
-            val timeStr = dateFormat.format(Date(batteryTimeAtFullCharge))
-            val durationMin = fullChargeDuration / 60000
-            val durationStr = "$durationMin min"
-            
-            announceFullCharge(timeStr, durationStr)
-            
-            // Reset
-            batteryTimeAtFullCharge = 0L
-            fullChargeDuration = 0L
-            isTrackingFullCharge = false
-        }
+        // Absolute rule: Never announce 100% full battery by voice
+        batteryTimeAtFullCharge = 0L
+        fullChargeDuration = 0L
+        isTrackingFullCharge = false
     }
     
     private fun announceFullCharge(time: String, duration: String) {
-        val text = "Full charge $time"
-        try {
-            val params = android.os.Bundle().apply {
-                putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
-            }
-            VoiceAnnouncementOptimizer.speakWith1SecondCeiling(
-                tts = tts,
-                rawText = text,
-                queueMode = TextToSpeech.QUEUE_FLUSH,
-                params = params
-            )
-        } catch (e: Exception) {
-            Log.w(TAG, "Full charge announcement error: ${e.message}")
-        }
+        // Absolute rule: Zero full-battery voice announcements
     }
 
     private var lastPowerConnectedTime = 0L
@@ -1602,19 +1579,23 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         val isNetra = identity == com.example.identity.OperationalIdentity.NETRA
         val title = if (isNetra) "NETRA BATTERY SENTINEL PRO" else "TRINETRA BATTERY SENTINEL PRO"
 
-        // Calculate and format elapsed time of the active session
+        // Calculate and format elapsed time of the active session (e.g. 1h 22m or 22m)
         val now = System.currentTimeMillis()
-        val elapsedMs = if (sessionStartTime > 0L) now - sessionStartTime else 0L
+        val elapsedMs = if (sessionStartTime > 0L) (now - sessionStartTime).coerceAtLeast(0L) else 0L
         val h = elapsedMs / 3600000
         val m = (elapsedMs % 3600000) / 60000
-        val s = (elapsedMs % 60000) / 1000
-        val elapsedTimeStr = String.format(Locale.US, "%02dh %02dm %02ds", h, m, s)
+        val elapsedTimeStr = if (h > 0) "${h}h ${m}m" else "${m}m"
 
         // Determine Status
         val status = when {
-            state.percentage >= 100 && state.isCharging -> "Overcharging"
-            state.percentage >= 100 -> "Full"
-            state.isCharging -> "Charging (${state.chargingType})"
+            state.isCharging && state.percentage >= 100 -> {
+                if (batteryTimeAtFullCharge > 0L && (now - batteryTimeAtFullCharge > 15 * 60 * 1000L)) {
+                    "Overcharging"
+                } else {
+                    "100% Reached"
+                }
+            }
+            state.isCharging -> "Charging"
             else -> "Discharging"
         }
 

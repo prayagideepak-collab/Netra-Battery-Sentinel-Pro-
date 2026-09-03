@@ -11,18 +11,18 @@ enum class HealthSubSection {
 }
 
 data class BatteryHealthMetrics(
-    val currentHealthScore: Int = 96,
-    val estimatedCapacityMah: Int = 4820,
-    val designCapacityMah: Int = 5000,
-    val totalChargeCycles: Int = 142,
-    val avgTemperatureCelsius: Float = 31.2f,
+    val currentHealthScore: Int = 98,
+    val estimatedCapacityMah: Int = 0,
+    val designCapacityMah: Int = 0,
+    val totalChargeCycles: Int = 0,
+    val avgTemperatureCelsius: Float = 0f,
     val chargingEfficiencyPercent: Float = 96.8f,
-    val estimatedBatteryAgeMonths: Float = 8.5f,
-    val overallLifecycleScore: Int = 95,
-    val habitScore: Int = 94,
-    val confidenceLevel: String = "HIGH (96%)",
+    val estimatedBatteryAgeMonths: Float = 0f,
+    val overallLifecycleScore: Int = 98,
+    val habitScore: Int = 95,
+    val confidenceLevel: String = "Authoritative Telemetry",
     val dataQualityFlag: String = "HIGH_QUALITY",
-    val capabilityStatus: String = "Full API Access (Cycle, Current & Capacity)",
+    val capabilityStatus: String = "Hardware HAL Telemetry Access",
     val lastAnalysisTimeMs: Long = System.currentTimeMillis()
 )
 

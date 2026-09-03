@@ -24,9 +24,39 @@ class BatteryHealthLogWorker(appContext: Context, workerParams: WorkerParameters
             val voltage = batteryStatusIntent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0) ?: 0
             val status = batteryStatusIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
 
+            val plugged = batteryStatusIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
+            val health = batteryStatusIntent?.getIntExtra(BatteryManager.EXTRA_HEALTH, -1) ?: -1
+
             val pct = if (level >= 0 && scale > 0) (level * 100 / scale.toFloat()).toInt() else -1
             val temp = if (rawTemp > 0) rawTemp / 10f else -1.0f
-            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || (plugged > 0 && status == BatteryManager.BATTERY_STATUS_FULL)
+
+            val chargingType = when (plugged) {
+                BatteryManager.BATTERY_PLUGGED_AC -> "AC"
+                BatteryManager.BATTERY_PLUGGED_USB -> "USB"
+                BatteryManager.BATTERY_PLUGGED_WIRELESS -> "WIRELESS"
+                4 -> "DOCK"
+                0 -> "NONE"
+                else -> "UNKNOWN"
+            }
+
+            val healthStr = when (health) {
+                BatteryManager.BATTERY_HEALTH_GOOD -> "GOOD"
+                BatteryManager.BATTERY_HEALTH_OVERHEAT -> "OVERHEAT"
+                BatteryManager.BATTERY_HEALTH_DEAD -> "DEAD"
+                BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "OVER_VOLTAGE"
+                BatteryManager.BATTERY_HEALTH_UNSPECIFIED_FAILURE -> "FAILURE"
+                BatteryManager.BATTERY_HEALTH_COLD -> "COLD"
+                else -> "UNKNOWN"
+            }
+
+            val statusStr = when (status) {
+                BatteryManager.BATTERY_STATUS_CHARGING -> "CHARGING"
+                BatteryManager.BATTERY_STATUS_DISCHARGING -> "DISCHARGING"
+                BatteryManager.BATTERY_STATUS_FULL -> "FULL"
+                BatteryManager.BATTERY_STATUS_NOT_CHARGING -> "NOT_CHARGING"
+                else -> "UNKNOWN"
+            }
 
             val bm = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
             var currentNowVal = try {
@@ -62,9 +92,9 @@ class BatteryHealthLogWorker(appContext: Context, workerParams: WorkerParameters
                     temperature = trendLog.temperature,
                     voltageMv = trendLog.voltage,
                     currentNowMa = trendLog.currentNow,
-                    batteryHealth = "GOOD",
-                    batteryStatus = if (isCharging) "CHARGING" else "DISCHARGING",
-                    chargingType = if (isCharging) "AC" else "NONE"
+                    batteryHealth = healthStr,
+                    batteryStatus = statusStr,
+                    chargingType = chargingType
                 )
                 historyDao.insertBatteryHistory(historyEntry)
             } catch (e: Exception) {

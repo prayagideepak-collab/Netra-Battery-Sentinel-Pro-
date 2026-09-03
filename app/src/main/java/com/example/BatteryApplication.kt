@@ -64,6 +64,12 @@ class BatteryApplication : Application() {
         super.onCreate()
         Log.i("NetraBoot", "Step 1: Application Started")
 
+        // Initialize core database repository & battery manager
+        val repo = repository
+        if (repo != null) {
+            Log.i("NetraBoot", "Core Repository and BatteryManager active.")
+        }
+
         SafeModeInitializer.runSafeTask("NetraDataMigrationEngine") {
             com.example.util.NetraDataMigrationEngine.initializeAndMigrate(this)
         }

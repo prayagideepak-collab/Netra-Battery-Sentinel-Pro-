@@ -22,11 +22,13 @@ class BatteryVoiceEngine(private val context: Context, private val tts: TextToSp
 
     companion object {
         private const val TAG = "BatteryVoiceEngine"
-        val SUPPORTED_THRESHOLDS = setOf(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100)
+        val SUPPORTED_THRESHOLDS = setOf(5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95)
     }
 
     fun checkMilestone(percentage: Int, isCharging: Boolean, isEmergencyMode: Boolean, settings: com.example.data.SettingsEntity? = null) {
-        // Evaluate threshold support (strictly handles 10% to 100% in multiples of 10 or 5)
+        // Absolute rule: Never announce 100% full battery by voice
+        if (percentage >= 100) return
+        // Evaluate threshold support (strictly handles 5% to 95% in multiples of 5)
         if (percentage !in SUPPORTED_THRESHOLDS && percentage % 5 != 0) return
 
         // Milestone logic: trigger only once per percentage in this direction (Duplicate-trigger protection)
