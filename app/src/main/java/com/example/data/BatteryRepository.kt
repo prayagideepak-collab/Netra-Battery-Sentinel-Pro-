@@ -117,6 +117,23 @@ class BatteryRepository(
 
     suspend fun insertTrendLog(log: BatteryTrendLog) {
         batteryDao.insertTrendLog(log)
+        try {
+            val isCharging = log.dischargeRate == 0f || log.currentNow > 15
+            val historyEntry = BatteryHistoryEntity(
+                timestamp = log.timestamp,
+                batteryLevel = log.batteryLevel.coerceIn(0, 100),
+                isCharging = isCharging,
+                temperature = log.temperature,
+                voltageMv = log.voltage,
+                currentNowMa = log.currentNow,
+                batteryHealth = "GOOD",
+                batteryStatus = if (isCharging) "CHARGING" else "DISCHARGING",
+                chargingType = if (isCharging) "AC" else "NONE"
+            )
+            batteryHistoryDao?.insertBatteryHistory(historyEntry)
+        } catch (e: Exception) {
+            android.util.Log.e("BatteryRepository", "Error auto-duplicating TrendLog to BatteryHistory: ${e.message}")
+        }
     }
 
     companion object {

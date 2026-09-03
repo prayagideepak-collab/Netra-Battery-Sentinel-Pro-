@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -323,9 +324,345 @@ fun TimeUntilAnalyticsCard(batteryStateState: androidx.compose.runtime.State<com
 }
 
 @Composable
+fun Battery24hHistoryGraph(
+    history: List<com.example.data.BatteryHistoryEntity>,
+    currentLevel: Int,
+    currentIsCharging: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val chargeColor = Color(0xFF00E676)
+    val abnormalDropColor = Color(0xFFFF1744)
+
+    if (history.size < 2) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Insufficient historical data",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "No historical telemetry points found in the last 24 hours. Please keep Netra active.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+        return
+    }
+
+    val now = System.currentTimeMillis()
+    val endTimestamp = now
+    val startTimestamp = now - 24 * 3600_000L
+
+    // Filter samples strictly in the last 24 hours
+    val samples24h = history.filter { it.timestamp in startTimestamp..endTimestamp }.sortedBy { it.timestamp }
+
+    if (samples24h.size < 2) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "Insufficient historical data",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
+    var touchedIndex by remember(samples24h) { mutableStateOf<Int?>(null) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = "Battery usage (last 24 hours)",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(samples24h) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val position = event.changes.firstOrNull()?.position
+                                if (position != null && event.changes.any { it.pressed }) {
+                                    val leftPadding = 32.dp.toPx()
+                                    val rightPadding = 16.dp.toPx()
+                                    val drawWidth = size.width - leftPadding - rightPadding
+                                    
+                                    val xRelative = position.x - leftPadding
+                                    val pct = (xRelative / drawWidth).coerceIn(0f, 1f)
+                                    val approxTimestamp = startTimestamp + (pct * (24 * 3600_000L)).toLong()
+                                    
+                                    val closest = samples24h.minByOrNull { Math.abs(it.timestamp - approxTimestamp) }
+                                    if (closest != null) {
+                                        touchedIndex = samples24h.indexOf(closest)
+                                    }
+                                } else {
+                                    touchedIndex = null
+                                }
+                            }
+                        }
+                    }
+            ) {
+                val width = size.width
+                val height = size.height
+
+                val leftPadding = 32.dp.toPx()
+                val rightPadding = 16.dp.toPx()
+                val topPadding = 16.dp.toPx()
+                val bottomPadding = 16.dp.toPx()
+
+                val drawWidth = width - leftPadding - rightPadding
+                val drawHeight = height - topPadding - bottomPadding
+
+                // Draw Y Axis grid lines and labels (0%, 50%, 100%)
+                val yGridLevels = listOf(0f, 0.5f, 1f)
+                yGridLevels.forEach { level ->
+                    val y = topPadding + (1f - level) * drawHeight
+                    drawLine(
+                        color = Color.Gray.copy(alpha = 0.2f),
+                        start = Offset(leftPadding, y),
+                        end = Offset(width - rightPadding, y),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                    )
+
+                    // Y labels
+                    drawContext.canvas.nativeCanvas.drawText(
+                        "${(level * 100).toInt()}%",
+                        8.dp.toPx(),
+                        y + 4.dp.toPx(),
+                        android.graphics.Paint().apply {
+                            color = android.graphics.Color.GRAY
+                            textSize = 10.sp.toPx()
+                            isAntiAlias = true
+                        }
+                    )
+                }
+
+                // Map points to canvas coordinates
+                val points = samples24h.map { sample ->
+                    val x = leftPadding + (sample.timestamp - startTimestamp).toFloat() / (24 * 3600_000f) * drawWidth
+                    val y = topPadding + (1f - (sample.batteryLevel / 100f)) * drawHeight
+                    Offset(x, y)
+                }
+
+                // Draw segments with visual colors and gap-handling
+                for (i in 1 until samples24h.size) {
+                    val prev = samples24h[i - 1]
+                    val curr = samples24h[i]
+
+                    // Gaps in telemetry: do NOT draw line if time diff > 3 hours
+                    if (curr.timestamp - prev.timestamp > 3 * 3600_000L) {
+                        continue
+                    }
+
+                    val color = when {
+                        prev.isCharging && curr.isCharging -> chargeColor
+                        else -> {
+                            val timeHours = (curr.timestamp - prev.timestamp) / 3600_000f
+                            val drop = prev.batteryLevel - curr.batteryLevel
+                            val dropRate = if (timeHours > 0.01f) drop / timeHours else 0f
+                            if (dropRate >= 18f) abnormalDropColor else primaryColor
+                        }
+                    }
+
+                    drawLine(
+                        color = color,
+                        start = points[i - 1],
+                        end = points[i],
+                        strokeWidth = 3.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // Draw current point indicator at the end of the graph
+                val lastOffset = points.last()
+                drawCircle(
+                    color = if (currentIsCharging) chargeColor else primaryColor,
+                    radius = 6.dp.toPx(),
+                    center = lastOffset
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 3.dp.toPx(),
+                    center = lastOffset
+                )
+
+                // Draw touched point indicator & vertical guideline
+                touchedIndex?.let { index ->
+                    if (index in points.indices) {
+                        val offset = points[index]
+                        drawLine(
+                            color = Color.Gray.copy(alpha = 0.4f),
+                            start = Offset(offset.x, topPadding),
+                            end = Offset(offset.x, height - bottomPadding),
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                        )
+                        drawCircle(
+                            color = primaryColor,
+                            radius = 6.dp.toPx(),
+                            center = offset
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 3.dp.toPx(),
+                            center = offset
+                        )
+                    }
+                }
+            }
+
+            // Interactive Tooltip overlay
+            touchedIndex?.let { index ->
+                if (index in samples24h.indices) {
+                    val sample = samples24h[index]
+                    val sdf = java.text.SimpleDateFormat("hh:mm:ss a", java.util.Locale.getDefault())
+                    val timeStr = sdf.format(java.util.Date(sample.timestamp))
+
+                    val tooltipText = buildString {
+                        append("Battery: ${sample.batteryLevel}%\n")
+                        append("Time: $timeStr\n")
+                        append("State: ${if (sample.isCharging) "Charging" else "Discharging"}\n")
+                        append("Temp: ${String.format(java.util.Locale.US, "%.1f", sample.temperature)}°C\n")
+                        append("Voltage: ${String.format(java.util.Locale.US, "%.2f", sample.voltageMv / 1000f)}V\n")
+                        append("Current: ${sample.currentNowMa}mA")
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(
+                            text = tooltipText,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+
+        // Draw rolling 24-hour timeline labels at the bottom
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 32.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val sdf = java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault())
+            val time1 = sdf.format(java.util.Date(startTimestamp))
+            val time2 = sdf.format(java.util.Date(startTimestamp + 6 * 3600_000L))
+            val time3 = sdf.format(java.util.Date(startTimestamp + 12 * 3600_000L))
+            val time4 = sdf.format(java.util.Date(startTimestamp + 18 * 3600_000L))
+            val timeCurrent = "Current"
+
+            listOf(time1, time2, time3, time4, timeCurrent).forEach { label ->
+                Text(
+                    text = label,
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TelemetryStatBox(
+    title: String,
+    current: String,
+    min: String,
+    max: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = current,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Min: $min",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+                Text(
+                    text = "Max: $max",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun AuthoritativeBatteryRuntimeCard(
     batteryStateState: androidx.compose.runtime.State<com.example.service.BatteryState>,
-    runtimePoints: List<Float> = emptyList(),
+    history24h: List<com.example.data.BatteryHistoryEntity>,
     modifier: Modifier = Modifier
 ) {
     val state by batteryStateState
@@ -344,6 +681,7 @@ fun AuthoritativeBatteryRuntimeCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
+            // Header Row: Percentage and Charging Status
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -351,7 +689,7 @@ fun AuthoritativeBatteryRuntimeCard(
             ) {
                 Column {
                     Text(
-                        text = "Battery Runtime & Status",
+                        text = "Battery Status",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -366,7 +704,7 @@ fun AuthoritativeBatteryRuntimeCard(
                     if (isCharging) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Charging Type: ${if (state.chargingSpeed.isNotBlank() && state.chargingSpeed != "None") state.chargingSpeed else "Unknown"}",
+                            text = "Charging Speed: ${if (state.chargingSpeed.isNotBlank() && state.chargingSpeed != "None") state.chargingSpeed else "Unknown"}",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -375,7 +713,7 @@ fun AuthoritativeBatteryRuntimeCard(
                 }
                 Text(
                     text = "${percentage}%",
-                    fontSize = 32.sp,
+                    fontSize = 36.sp,
                     fontWeight = FontWeight.Bold,
                     color = if (isCharging) Color(0xFF00E676) else MaterialTheme.colorScheme.primary
                 )
@@ -403,14 +741,72 @@ fun AuthoritativeBatteryRuntimeCard(
                 )
             }
 
-            if (runtimePoints.size >= 2) {
-                Spacer(modifier = Modifier.height(12.dp))
-                // Dedicated Battery Runtime Graph from Authoritative History
-                Box(modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                    InteractiveRealtimeGraph(
-                        points = runtimePoints,
-                        labelY = "",
-                        lineColor = if (isCharging) Color(0xFF00E676) else Color(0xFFFF1744)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // The beautiful 24h rolling history graph
+            Battery24hHistoryGraph(
+                history = history24h,
+                currentLevel = percentage,
+                currentIsCharging = isCharging,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 24h Detailed Statistics
+            Text(
+                text = "24-Hour Telemetry Statistics",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // Calculations based on the 24h history
+            val batteryMin = if (history24h.isNotEmpty()) history24h.minOf { it.batteryLevel } else percentage
+            val batteryMax = if (history24h.isNotEmpty()) history24h.maxOf { it.batteryLevel } else percentage
+
+            val tempMin = if (history24h.isNotEmpty()) history24h.minOf { it.temperature } else state.temperature
+            val tempMax = if (history24h.isNotEmpty()) history24h.maxOf { it.temperature } else state.temperature
+
+            val voltMin = if (history24h.isNotEmpty()) history24h.minOf { it.voltageMv } / 1000f else (state.voltage / 1000f)
+            val voltMax = if (history24h.isNotEmpty()) history24h.maxOf { it.voltageMv } / 1000f else (state.voltage / 1000f)
+
+            val currMin = if (history24h.isNotEmpty()) history24h.minOf { it.currentNowMa } else state.currentNow
+            val currMax = if (history24h.isNotEmpty()) history24h.maxOf { it.currentNowMa } else state.currentNow
+
+            // Grid Layout
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TelemetryStatBox(
+                        title = "Battery Level",
+                        current = "$percentage%",
+                        min = "$batteryMin%",
+                        max = "$batteryMax%",
+                        modifier = Modifier.weight(1f)
+                    )
+                    TelemetryStatBox(
+                        title = "Temperature",
+                        current = "${String.format(java.util.Locale.US, "%.1f", state.temperature)}°C",
+                        min = "${String.format(java.util.Locale.US, "%.1f", tempMin)}°C",
+                        max = "${String.format(java.util.Locale.US, "%.1f", tempMax)}°C",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TelemetryStatBox(
+                        title = "Voltage",
+                        current = "${String.format(java.util.Locale.US, "%.2f", state.voltage / 1000f)}V",
+                        min = "${String.format(java.util.Locale.US, "%.2f", voltMin)}V",
+                        max = "${String.format(java.util.Locale.US, "%.2f", voltMax)}V",
+                        modifier = Modifier.weight(1f)
+                    )
+                    TelemetryStatBox(
+                        title = "Current Flow",
+                        current = "${state.currentNow}mA",
+                        min = "${currMin}mA",
+                        max = "${currMax}mA",
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
@@ -838,6 +1234,33 @@ fun MonitorScreen(
     var isAdvancedMode by remember { mutableStateOf(false) }
     val state = batteryStateState.value
 
+    var lastIsCharging by remember { mutableStateOf(state.isCharging) }
+    var showDisconnectPopup by remember { mutableStateOf(false) }
+    var disconnectSession by remember { mutableStateOf<ChargingSession?>(null) }
+    var timerSecondsRemaining by remember { mutableStateOf(10) }
+
+    LaunchedEffect(state.isCharging, sessions) {
+        if (!state.isCharging && lastIsCharging) {
+            val completed = sessions.firstOrNull { it.endTime != null && !it.isDischarge }
+            if (completed != null) {
+                disconnectSession = completed
+                showDisconnectPopup = true
+            }
+        }
+        lastIsCharging = state.isCharging
+    }
+
+    LaunchedEffect(showDisconnectPopup) {
+        if (showDisconnectPopup) {
+            timerSecondsRemaining = 10
+            while (timerSecondsRemaining > 0) {
+                kotlinx.coroutines.delay(1000)
+                timerSecondsRemaining--
+            }
+            showDisconnectPopup = false
+        }
+    }
+
     // Track when the state was last updated
     val stateTimestamp = remember(state) { System.currentTimeMillis() }
     
@@ -878,15 +1301,12 @@ fun MonitorScreen(
             modifier = Modifier.padding(bottom = 12.dp)
         )
 
-        val authHistory by viewModel.authoritativeHistory.collectAsStateWithLifecycle()
-        val runtimePoints = remember(authHistory) {
-            authHistory.takeLast(30).map { it.batteryLevel / 100f }
-        }
+        val history24h by viewModel.batteryHistory24h.collectAsStateWithLifecycle()
 
         // Authoritative Battery Runtime Card
         AuthoritativeBatteryRuntimeCard(
             batteryStateState = batteryStateState,
-            runtimePoints = runtimePoints,
+            history24h = history24h,
             modifier = Modifier.padding(bottom = 16.dp)
         )
         
@@ -1484,6 +1904,15 @@ fun MonitorScreen(
     }
     if (showDiagnosticsDialog) {
         BatteryDiagnosticsDialog(state = state, sessions = viewModel.sessions.value, onDismiss = { showDiagnosticsDialog = false })
+    }
+    if (showDisconnectPopup) {
+        disconnectSession?.let { session ->
+            ChargingDisconnectDialog(
+                session = session,
+                secondsLeft = timerSecondsRemaining,
+                onDismiss = { showDisconnectPopup = false }
+            )
+        }
     }
 
 
@@ -5870,6 +6299,164 @@ fun BatteryTimelineWidget(sessions: List<ChargingSession>) {
             }
         }
     }
+}
+
+@Composable
+fun ChargingDisconnectDialog(
+    session: ChargingSession,
+    secondsLeft: Int,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Timer,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Charging Session End",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    modifier = Modifier
+                        .background(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = androidx.compose.foundation.shape.CircleShape
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "${secondsLeft}s",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        },
+        text = {
+            val startPercent = session.startPercentage
+            val endPercent = session.endPercentage ?: startPercent
+            val pctGained = (endPercent - startPercent).coerceAtLeast(0)
+
+            val startTemp = session.startTemperature
+            val endTemp = session.endTemperature ?: session.maxTemperature
+            val heatGained = (endTemp - startTemp).coerceAtLeast(0f)
+
+            val durationSec = session.totalDurationSeconds
+            val durationMin = durationSec / 60
+            val durationRemainingSec = durationSec % 60
+            val chargeTimeStr = if (durationMin > 0) "${durationMin}m ${durationRemainingSec}s" else "${durationSec}s"
+
+            val speedPctPerHr = if (durationSec > 0) {
+                (pctGained.toFloat() / (durationSec.toFloat() / 3600f))
+            } else {
+                0f
+            }
+
+            // Estimate time until 80% if started below 80%
+            val timeTo80Str = when {
+                startPercent >= 80 -> "Already reached"
+                endPercent >= 80 -> {
+                    val secTo80 = if (pctGained > 0) {
+                        ((80 - startPercent).toFloat() / pctGained.toFloat() * durationSec).toLong()
+                    } else 0L
+                    val minTo80 = secTo80 / 60
+                    val remSecTo80 = secTo80 % 60
+                    "${minTo80}m ${remSecTo80}s"
+                }
+                speedPctPerHr > 0.1f -> {
+                    val remPct = 80 - endPercent
+                    val estMinutes = (remPct / speedPctPerHr * 60).toLong()
+                    "${estMinutes}m"
+                }
+                else -> "N/A"
+            }
+
+            val fullChargeTimeStr = if (session.fullyCharged) {
+                session.formattedFullChargeTime?.ifEmpty { "Reached" } ?: "Reached"
+            } else {
+                "Not reached"
+            }
+
+            val overchargeMin = session.overchargingDurationSeconds / 60
+            val overchargeSec = session.overchargingDurationSeconds % 60
+            val overchargingTimeStr = if (session.overchargingDurationSeconds > 0) {
+                if (overchargeMin > 0) "${overchargeMin}m ${overchargeSec}s" else "${session.overchargingDurationSeconds}s"
+            } else {
+                "0s"
+            }
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "A summary of the completed charging session telemetry is compiled below:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                val statsList = listOf(
+                    "Start Time" to session.formattedStartTime,
+                    "End Time" to (session.formattedEndTime ?: "N/A"),
+                    "Start / End %" to "$startPercent% → $endPercent%",
+                    "Battery Charged" to "+$pctGained%",
+                    "Start / End Temp" to "${String.format(Locale.US, "%.1f", startTemp)}°C → ${String.format(Locale.US, "%.1f", endTemp)}°C",
+                    "Heat Gained" to "+${String.format(Locale.US, "%.1f", heatGained)}°C",
+                    "Charge Duration" to chargeTimeStr,
+                    "Charging Speed" to "${String.format(Locale.US, "%.1f", speedPctPerHr)}%/h",
+                    "Time until 80%" to timeTo80Str,
+                    "Full Charge Time" to fullChargeTimeStr,
+                    "Overcharging Time" to overchargingTimeStr
+                )
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    statsList.forEach { (label, value) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = value,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("OK")
+            }
+        }
+    )
 }
 
 @Composable

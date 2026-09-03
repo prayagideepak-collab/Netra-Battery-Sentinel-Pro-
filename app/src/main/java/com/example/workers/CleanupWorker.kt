@@ -16,20 +16,20 @@ class CleanupWorker(appContext: Context, workerParams: WorkerParameters) :
             val database = BatteryDatabase.getDatabase(applicationContext)
             val dao = database.batteryDao()
             
-            // Cleanup logs older than 30 days
-            val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-            dao.clearOldBatteryEvents(thirtyDaysAgo)
-            dao.clearOldDischargingSessions(thirtyDaysAgo)
-            dao.clearOldChargingSessions(thirtyDaysAgo)
+            // Cleanup logs older than 7 days
+            val sevenDaysAgo = System.currentTimeMillis() - (7L * 24 * 60 * 60 * 1000)
+            dao.clearOldBatteryEvents(sevenDaysAgo)
+            dao.clearOldDischargingSessions(sevenDaysAgo)
+            dao.clearOldChargingSessions(sevenDaysAgo)
 
-            // Prune local diagnostic log files older than 30 days
-            DiagnosticLogger.pruneOldLogs(applicationContext, thirtyDaysAgo)
+            // Prune local diagnostic log files older than 7 days
+            DiagnosticLogger.pruneOldLogs(applicationContext, sevenDaysAgo)
 
             DiagnosticLogger.logEvent(
                 applicationContext,
                 "WORKER_MAINTENANCE",
                 "Database Maintenance Complete",
-                "Pruned historical battery records and diagnostic log files older than 30 days during idle cycle",
+                "Pruned historical battery records and diagnostic log files older than 7 days during idle cycle",
                 0,
                 0f,
                 0f,

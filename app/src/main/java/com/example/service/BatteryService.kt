@@ -1598,66 +1598,57 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        val showSpeed = currentSettings.showSpeedIndicatorInNotification && isScreenOn && currentSpeedTitle.isNotEmpty()
         val identity = com.example.identity.OperationalIdentityManager.currentIdentity
         val isNetra = identity == com.example.identity.OperationalIdentity.NETRA
+        val title = if (isNetra) "NETRA BATTERY SENTINEL PRO" else "TRINETRA BATTERY SENTINEL PRO"
 
-        val contentTitle = if (showSpeed) {
-            if (isNetra) "NETRA • $currentSpeedTitle" else "TRINETRA • $currentSpeedTitle"
-        } else {
-            if (isNetra) {
-                "NETRA BATTERY SENTINEL PRO: Active Mitigation (${state.percentage}%)"
-            } else if (state.isCharging) {
-                "TRINETRA BATTERY SENTINEL PRO: Charging (${state.chargingType}) ${state.percentage}%"
-            } else {
-                "TRINETRA BATTERY SENTINEL PRO: ${state.percentage}%"
-            }
+        // Calculate and format elapsed time of the active session
+        val now = System.currentTimeMillis()
+        val elapsedMs = if (sessionStartTime > 0L) now - sessionStartTime else 0L
+        val h = elapsedMs / 3600000
+        val m = (elapsedMs % 3600000) / 60000
+        val s = (elapsedMs % 60000) / 1000
+        val elapsedTimeStr = String.format(Locale.US, "%02dh %02dm %02ds", h, m, s)
+
+        // Determine Status
+        val status = when {
+            state.percentage >= 100 && state.isCharging -> "Overcharging"
+            state.percentage >= 100 -> "Full"
+            state.isCharging -> "Charging (${state.chargingType})"
+            else -> "Discharging"
         }
 
-        val contentText = if (showSpeed) {
-            val batteryLabel = if (state.isCharging) {
-                val etaVal = if (state.remainingTimeMs > 0) com.example.util.TimeManager.formatDurationMs(state.remainingTimeMs) else "Calculating..."
-                "Full charge in: $etaVal"
-            } else {
-                val etaVal = if (state.remainingTimeMs > 0) com.example.util.TimeManager.formatDurationMs(state.remainingTimeMs) else "Calculating..."
-                "Battery remaining: $etaVal"
-            }
-            "$batteryLabel | Temp: ${state.temperature}°C"
-        } else {
-            if (state.isCharging) {
-                val etaVal = if (state.remainingTimeMs > 0) com.example.util.TimeManager.formatDurationMs(state.remainingTimeMs) else "Calculating..."
-                "Full charge in: $etaVal | Temp: ${state.temperature}°C | Speed: ${String.format(Locale.US, "%.1f", state.speed)}%/h"
-            } else {
-                val etaVal = if (state.remainingTimeMs > 0) com.example.util.TimeManager.formatDurationMs(state.remainingTimeMs) else "Calculating..."
-                "Battery remaining: $etaVal | Temp: ${state.temperature}°C | Health: ${state.health}"
-            }
-        }
+        // Format telemetry data
+        val tempStr = if (state.temperature != -999f) String.format(Locale.US, "%.1f°C", state.temperature) else "N/A"
+        val powerStr = String.format(Locale.US, "%.2fW", state.powerWatt)
+        val currentStr = "${Math.abs(state.currentNow)}mA"
+
+        // Compact notification content text: Status • Battery % • Temperature • Elapsed Time • Power • Current
+        val contentText = "$status • ${state.percentage}% • $tempStr • $elapsedTimeStr • $powerStr • $currentStr"
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(contentTitle)
+            .setContentTitle(title)
             .setContentText(contentText)
             .setSmallIcon(android.R.drawable.ic_lock_idle_low_battery)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
 
-        if (showSpeed) {
-            val expandedStr = buildString {
-                append(currentSpeedExpanded)
-                append("\n------------------------\n")
-                if (state.isCharging) {
-                    val etaVal = if (state.remainingTimeMs > 0) com.example.util.TimeManager.formatDurationMs(state.remainingTimeMs) else "Calculating..."
-                    append("Battery: ${state.percentage}% (Charging)\n")
-                    append("Full charge in: $etaVal\n")
-                    append("Temp: ${state.temperature}°C | Speed: ${String.format(Locale.US, "%.1f", state.speed)}%/h")
-                } else {
-                    val etaVal = if (state.remainingTimeMs > 0) com.example.util.TimeManager.formatDurationMs(state.remainingTimeMs) else "Calculating..."
-                    append("Battery: ${state.percentage}% (${state.health})\n")
-                    append("Battery remaining: $etaVal\n")
-                    append("Loc: ${state.cityName} | Temp: ${state.temperature}°C")
-                }
-            }
-            builder.setStyle(NotificationCompat.BigTextStyle().bigText(expandedStr))
+        // Optional big text style for expanded view to show detailed diagnostics
+        val expandedStr = buildString {
+            append("$title - Operational Diagnostics\n")
+            append("---------------------------------------\n")
+            append("Current Status: $status\n")
+            append("Battery Level: ${state.percentage}%\n")
+            append("Temperature: $tempStr\n")
+            append("Active Session Elapsed: $elapsedTimeStr\n")
+            append("Intake/Drain Power: $powerStr\n")
+            append("Real-Time Current: $currentStr\n")
+            append("System Voltage: ${state.voltage / 1000f}V\n")
+            append("Battery Health: ${state.health}\n")
+            append("Safety Zone: ${state.magneticSafetyZone}\n")
+            append("Last Synced: ${java.text.SimpleDateFormat("HH mm ss a", Locale.US).format(java.util.Date(now))}")
         }
+        builder.setStyle(NotificationCompat.BigTextStyle().bigText(expandedStr))
 
         return builder.build()
     }

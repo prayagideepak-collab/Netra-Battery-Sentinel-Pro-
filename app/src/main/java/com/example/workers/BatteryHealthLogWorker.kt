@@ -40,6 +40,7 @@ class BatteryHealthLogWorker(appContext: Context, workerParams: WorkerParameters
 
             val database = BatteryDatabase.getDatabase(context)
             val dao = database.batteryDao()
+            val historyDao = database.batteryHistoryDao()
 
             // Insert periodic battery trend log into Room database
             val trendLog = BatteryTrendLog(
@@ -52,6 +53,23 @@ class BatteryHealthLogWorker(appContext: Context, workerParams: WorkerParameters
                 currentNow = currentNowVal
             )
             dao.insertTrendLog(trendLog)
+
+            try {
+                val historyEntry = com.example.data.BatteryHistoryEntity(
+                    timestamp = trendLog.timestamp,
+                    batteryLevel = trendLog.batteryLevel.coerceIn(0, 100),
+                    isCharging = isCharging,
+                    temperature = trendLog.temperature,
+                    voltageMv = trendLog.voltage,
+                    currentNowMa = trendLog.currentNow,
+                    batteryHealth = "GOOD",
+                    batteryStatus = if (isCharging) "CHARGING" else "DISCHARGING",
+                    chargingType = if (isCharging) "AC" else "NONE"
+                )
+                historyDao.insertBatteryHistory(historyEntry)
+            } catch (e: Exception) {
+                android.util.Log.e("BatteryHealthWorker", "Error saving health log to battery history: ${e.message}")
+            }
 
             // Also record a battery health event log
             val healthEvent = BatteryEvent(

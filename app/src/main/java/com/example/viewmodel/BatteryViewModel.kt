@@ -196,6 +196,19 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
     val authoritativeHistory: StateFlow<List<com.example.telemetry.AuthoritativeTelemetrySample>> =
         com.example.telemetry.AuthoritativeTelemetryRepository.historicalSamples
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val batteryHistory24h: StateFlow<List<com.example.data.BatteryHistoryEntity>> = sanitizedBatteryState
+        .flatMapLatest { _ ->
+            val end = System.currentTimeMillis()
+            val start = end - 24 * 3600 * 1000L
+            repository?.getBatteryHistoryBetween(start, end) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
     fun getGraphForWindow(windowMinutes: Int, maxDisplayPoints: Int = 100): com.example.telemetry.GraphWindowResult {
         return com.example.telemetry.AuthoritativeTelemetryRepository.getGraphWindowResult(windowMinutes, maxDisplayPoints)
     }
