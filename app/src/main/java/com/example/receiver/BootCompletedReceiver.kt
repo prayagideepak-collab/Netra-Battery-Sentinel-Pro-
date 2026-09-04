@@ -40,6 +40,13 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     } catch (e: Exception) {
                         Log.e("BootCompletedReceiver", "Failed to run boot self-audit", e)
                     }
+
+                    // Reconcile Whole-Device Auto Cache Cleaner schedule
+                    try {
+                        com.example.engines.cleaner.AutoCacheCleanerScheduler.reconcileSchedule(context)
+                    } catch (e: Exception) {
+                        Log.e("BootCompletedReceiver", "Failed to reconcile auto cache cleaner schedule", e)
+                    }
                 } catch (e: Exception) {
                     Log.e("BootCompletedReceiver", "Failed to start BatteryService on boot", e)
                 }

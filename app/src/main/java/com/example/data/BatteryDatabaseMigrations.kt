@@ -71,7 +71,8 @@ object BatteryDatabaseMigrations {
             "highDrainAppUsageEnabled INTEGER NOT NULL DEFAULT 1",
             "lowBatteryRedThemeEnabled INTEGER NOT NULL DEFAULT 1",
             "dynamicBatteryColorEngineEnabled INTEGER NOT NULL DEFAULT 0",
-            "showSpeedIndicatorInNotification INTEGER NOT NULL DEFAULT 0"
+            "showSpeedIndicatorInNotification INTEGER NOT NULL DEFAULT 0",
+            "autoCacheCleanerEnabled INTEGER NOT NULL DEFAULT 1"
         )
         for (col in columnsToAdd) {
             try {
@@ -214,6 +215,12 @@ object BatteryDatabaseMigrations {
     }
 
     val MIGRATION_44_45 = object : Migration(44, 45) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
+        }
+    }
+
+    val MIGRATION_45_46 = object : Migration(45, 46) {
         override fun migrate(database: SupportSQLiteDatabase) {
             executeFullUpgrade(database)
         }

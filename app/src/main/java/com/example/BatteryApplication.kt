@@ -88,6 +88,7 @@ class BatteryApplication : Application() {
                 scheduleBatteryHealthLoggingWork()
                 scheduleDataSyncWork()
                 scheduleWidgetUpdateWork()
+                com.example.engines.cleaner.AutoCacheCleanerScheduler.reconcileSchedule(this@BatteryApplication)
             }
         }
         

@@ -27,7 +27,7 @@ import androidx.room.RoomDatabase
         SyncTaskEntity::class,
         ChargingProtectionSessionEntity::class
     ],
-    version = 45,
+    version = 46,
     exportSchema = false
 )
 abstract class BatteryDatabase : RoomDatabase() {
@@ -62,7 +62,8 @@ abstract class BatteryDatabase : RoomDatabase() {
                     BatteryDatabaseMigrations.MIGRATION_41_42,
                     BatteryDatabaseMigrations.MIGRATION_42_43,
                     BatteryDatabaseMigrations.MIGRATION_43_44,
-                    BatteryDatabaseMigrations.MIGRATION_44_45
+                    BatteryDatabaseMigrations.MIGRATION_44_45,
+                    BatteryDatabaseMigrations.MIGRATION_45_46
                 )
                 .build()
                 INSTANCE = instance
