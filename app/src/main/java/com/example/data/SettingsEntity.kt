@@ -91,5 +91,4 @@ data class SettingsEntity(
     val lowBatteryRedThemeEnabled: Boolean = true,
     val dynamicBatteryColorEngineEnabled: Boolean = false,
     val showSpeedIndicatorInNotification: Boolean = false,
-    val autoCacheCleanerEnabled: Boolean = true
 )

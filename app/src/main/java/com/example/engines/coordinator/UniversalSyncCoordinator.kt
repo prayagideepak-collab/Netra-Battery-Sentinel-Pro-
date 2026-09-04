@@ -445,29 +445,6 @@ object UniversalSyncCoordinator : Engine {
             }
         ))
 
-        // 12. AUTO CACHE CLEANER STATUS TASK (Read-Only Status, strictly respects 4-daily schedule)
-        taskRegistry.registerTask(SyncTaskDescriptor(
-            taskId = "AUTO_CACHE_CLEANER_STATUS",
-            displayName = "Auto Cache Cleaner Status",
-            category = "SYSTEM",
-            isApplicable = { true },
-            executor = { context ->
-                try {
-                    val report = com.example.engines.cleaner.WholeDeviceAutoCacheCleaner.cleanerReportFlow.value
-                    val hasUsageAccess = com.example.engines.cleaner.WholeDeviceAutoCacheCleaner.isUsageAccessGranted(context)
-                    if (!report.isEnabled) {
-                        SyncTaskResult(SyncState.SKIPPED_WITH_REASON, "Auto Cleaner disabled in settings", 0, "Disabled in Settings")
-                    } else if (!hasUsageAccess) {
-                        SyncTaskResult(SyncState.UNAVAILABLE, "Usage Access required for whole-device cache measurement", 0, "Permission Required")
-                    } else {
-                        val cacheText = if (report.measuredCacheBytes >= 0) "${report.measuredCacheBytes / (1024 * 1024)} MB" else "Pending schedule"
-                        SyncTaskResult(SyncState.SUCCESS, null, 100, "State: ${report.state.name}, Cache: $cacheText, Slot: ${report.lastScheduledSlot}")
-                    }
-                } catch (e: Exception) {
-                    SyncTaskResult(SyncState.FAILED, e.message ?: "Cache cleaner status error", 0)
-                }
-            }
-        ))
     }
 
     fun registerSyncTask(
