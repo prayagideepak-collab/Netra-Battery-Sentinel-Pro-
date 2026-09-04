@@ -56,6 +56,9 @@ interface BatteryDao {
     @Query("SELECT * FROM battery_events ORDER BY timestamp DESC")
     fun getAllBatteryEvents(): Flow<List<BatteryEvent>>
 
+    @Query("SELECT * FROM battery_events ORDER BY timestamp DESC LIMIT 5")
+    suspend fun getRecentBatteryEventsDirect(): List<BatteryEvent>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBatteryEvent(event: BatteryEvent)
 

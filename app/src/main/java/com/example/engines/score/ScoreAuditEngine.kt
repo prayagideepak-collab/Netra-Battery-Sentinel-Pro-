@@ -250,7 +250,7 @@ object ScoreAuditEngine {
                         description = "Background synchronization cadence is consuming energy faster than nominal idle baseline.",
                         deductionPoints = drainDeduction,
                         timestampMs = now - 600000L,
-                        observedValue = "${if (batteryState.batteryDrainRatePerHr > 0) String.format(Locale.US, "%.1f", batteryState.batteryDrainRatePerHr) else "14.2"}%/hr",
+                        observedValue = if (batteryState.batteryDrainRatePerHr > 0) "${String.format(Locale.US, "%.1f", batteryState.batteryDrainRatePerHr)}%/hr" else "Unavailable",
                         expectedRange = "≤10.0%/hr",
                         durationStr = "10m 00s",
                         dataSource = "Battery Telemetry Engine",

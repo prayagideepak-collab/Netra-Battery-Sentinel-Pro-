@@ -573,12 +573,21 @@ fun NetraUnifiedGraphCanvas(
                         val abnormalPaths = mutableListOf<Path>()
 
                         var activeAbnormalPath: Path? = null
+                        var segmentStartIdx = 0
 
                         pointOffsets.forEachIndexed { idx, (offset, pt) ->
                             if (idx == 0) {
                                 path.moveTo(offset.x, offset.y)
+                                segmentStartIdx = idx
                             } else {
-                                path.lineTo(offset.x, offset.y)
+                                val prevPt = pointOffsets[idx - 1].second
+                                if (pt.timestamp - prevPt.timestamp > 30 * 60 * 1000L) {
+                                    // Segment break (Gap > 30 mins, offline/unavailable)
+                                    path.moveTo(offset.x, offset.y)
+                                    segmentStartIdx = idx
+                                } else {
+                                    path.lineTo(offset.x, offset.y)
+                                }
                             }
 
                             // Abnormal Rapid Drop segment tracking

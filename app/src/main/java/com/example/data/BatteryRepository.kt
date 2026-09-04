@@ -322,7 +322,7 @@ class BatteryRepository(
         
         val totalSecs = durationMs / 1000
         val isFull = endPercentage >= 100 || active.startPercentage == 100 || (active.fullChargeTime ?: 0L) > 0L
-        val fullTime = active.fullChargeTime ?: if (endPercentage >= 100 && active.startPercentage < 100) endTime else null
+        val fullTime = active.fullChargeTime
         val overchargeSecs = if (fullTime != null) {
             ((endTime - fullTime) / 1000).coerceAtLeast(0L)
         } else {

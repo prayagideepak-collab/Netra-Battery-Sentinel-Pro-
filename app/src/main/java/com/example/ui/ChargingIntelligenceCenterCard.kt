@@ -71,7 +71,7 @@ fun ChargingIntelligenceCenterCard() {
                                 )
                             }
                         }
-                        Text("ETA: ${chargingState.timeToFullChargeMinutes}m • Overcharge: ${chargingState.overchargeSeconds}s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("ETA: ${chargingState.timeToFullChargeMinutes}m • Overcharge: ${com.example.util.TimeManager.formatDurationSeconds(chargingState.overchargeSeconds)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Icon(if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, contentDescription = null)
@@ -166,7 +166,7 @@ fun ChargingIntelligenceCenterCard() {
                                             Text("Type: ${sess.chargingType}", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
                                             Text("${sess.initialBatteryPercent}% → ${sess.finalBatteryPercent}%", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         }
-                                        Text("Duration: ${sess.durationSeconds / 60}m • Overcharge: ${sess.overchargeDurationSeconds}s", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text("Duration: ${com.example.util.TimeManager.formatDurationSeconds(sess.durationSeconds)} • Overcharge: ${com.example.util.TimeManager.formatDurationSeconds(sess.overchargeDurationSeconds)}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
                             }

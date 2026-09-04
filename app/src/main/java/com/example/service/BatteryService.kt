@@ -1586,15 +1586,13 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
         val m = (elapsedMs % 3600000) / 60000
         val elapsedTimeStr = if (h > 0) "${h}h ${m}m" else "${m}m"
 
-        // Determine Status
+        // Determine Status based strictly on state
         val status = when {
-            state.isCharging && state.percentage >= 100 -> {
-                if (batteryTimeAtFullCharge > 0L && (now - batteryTimeAtFullCharge > 15 * 60 * 1000L)) {
-                    "Overcharging"
-                } else {
-                    "100% Reached"
-                }
+            state.isCharging && batteryTimeAtFullCharge > 0L -> {
+                // Legitimate overcharging starts when first-full timestamp exists and charger remained connected
+                if (now > batteryTimeAtFullCharge) "Overcharging" else "100% Reached"
             }
+            state.isCharging && state.percentage >= 100 -> "100% Reached"
             state.isCharging -> "Charging"
             else -> "Discharging"
         }
@@ -1627,7 +1625,7 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             append("System Voltage: ${state.voltage / 1000f}V\n")
             append("Battery Health: ${state.health}\n")
             append("Safety Zone: ${state.magneticSafetyZone}\n")
-            append("Last Synced: ${java.text.SimpleDateFormat("HH mm ss a", Locale.US).format(java.util.Date(now))}")
+            append("Last Synced: ${java.text.SimpleDateFormat("hh mm ss a", Locale.US).format(java.util.Date(now)).lowercase(Locale.US)}")
         }
         builder.setStyle(NotificationCompat.BigTextStyle().bigText(expandedStr))
 
@@ -2275,6 +2273,9 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             lastRecordedPercentage = pct
             serviceScope.launch(Dispatchers.IO) {
                 try {
+                    // Authoritative System Writer: Single Event -> Dual Canonical Logs (Trend & History Graph Dataset)
+                    val bState = liveBatteryState.value
+
                     repository?.insertTrendLog(
                         com.example.data.BatteryTrendLog(
                             timestamp = now,
@@ -2286,8 +2287,19 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
                             currentNow = currentVal
                         )
                     )
+                    
+                    repository?.recordBatterySnapshot(
+                        level = pct,
+                        isCharging = isChargingState,
+                        chargingType = bState.chargingType,
+                        temperature = temp,
+                        voltageMv = volt,
+                        currentNowMa = currentVal,
+                        health = bState.health,
+                        status = if (isChargingState) (if (pct >= 100) "FULL" else "CHARGING") else "DISCHARGING"
+                    )
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error inserting trend log: ${e.message}", e)
+                    Log.e(TAG, "Error inserting canonical telemetry logs: ${e.message}", e)
                 }
             }
         }
@@ -2297,13 +2309,8 @@ class BatteryService : Service(), TextToSpeech.OnInitListener {
             try {
                 val allLogs = repository?.allTrendLogs?.firstOrNull() ?: emptyList()
                 
-                // Get start of today in current local timezone
-                val calendar = java.util.Calendar.getInstance()
-                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-                calendar.set(java.util.Calendar.MINUTE, 0)
-                calendar.set(java.util.Calendar.SECOND, 0)
-                calendar.set(java.util.Calendar.MILLISECOND, 0)
-                val todayStartMs = calendar.timeInMillis
+                // Get start of today in current local timezone using canonical TimeManager
+                val todayStartMs = com.example.util.TimeManager.getStartOfLocalDay(now)
 
                 // Append the current reading to ensure real-time accuracy and prevent empty lists
                 val currentLog = com.example.data.BatteryTrendLog(

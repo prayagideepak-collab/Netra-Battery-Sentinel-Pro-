@@ -692,7 +692,7 @@ fun SessionHistoryCard(session: ChargingSession) {
                 }
                 Column {
                     Text("DURATION", fontSize = 8.sp, color = Color.Gray)
-                    Text("${session.totalDurationSeconds}s", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(com.example.util.TimeManager.formatDurationSeconds(session.totalDurationSeconds), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
                 Column {
                     Text("PEAK TEMP", fontSize = 8.sp, color = Color.Gray)
@@ -730,7 +730,7 @@ fun SessionHistoryCard(session: ChargingSession) {
                 Column {
                     Text("OVERCHARGE", fontSize = 8.sp, color = Color.Gray)
                     Text(
-                        text = "${session.overchargingDurationSeconds}s",
+                        text = com.example.util.TimeManager.formatDurationSeconds(session.overchargingDurationSeconds),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = if (session.overchargingDurationSeconds > 0) Color(0xFFFF9100) else Color.LightGray

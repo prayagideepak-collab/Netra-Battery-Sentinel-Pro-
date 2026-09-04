@@ -46,6 +46,7 @@ object SystemSelfAuditEngine {
 
     private val restartTracker = mutableMapOf<String, Int>()
     private val startTimeTracker = mutableMapOf<String, Long>()
+    private val lastActivityTracker = mutableMapOf<String, Long>()
     private val errorTracker = mutableMapOf<String, String?>()
 
     init {
@@ -63,6 +64,10 @@ object SystemSelfAuditEngine {
             restartTracker[it] = 0
             errorTracker[it] = null
         }
+    }
+
+    fun recordActivity(componentName: String, timestamp: Long = System.currentTimeMillis()) {
+        lastActivityTracker[componentName] = timestamp
     }
 
     private var lastAuditTime = 0L
@@ -84,7 +89,7 @@ object SystemSelfAuditEngine {
 
             val appCtx = getAttributionContext(context.applicationContext, "audit")
             val db = BatteryDatabase.getDatabase(appCtx)
-            val repo = BatteryRepository(db.batteryDao())
+            val repo = BatteryRepository(db.batteryDao(), db.batteryHistoryDao())
 
             val checkResults = mutableListOf<ComponentStatus>()
             val recoveryActions = mutableListOf<String>()
@@ -109,7 +114,7 @@ object SystemSelfAuditEngine {
                         val intent = Intent(appCtx, BatteryService::class.java)
                         com.example.providers.SafeServiceHealthProvider.safeStartForegroundService(appCtx, intent)
                     } catch (e: Exception) {
-                        errorTracker["Background Monitoring Service"] = e.message
+                        errorTracker["Background Monitoring Service"] = "${e.javaClass.simpleName}: ${e.message}"
                     }
                 } else {
                     serviceStatus = "🔴 Failed (Recovery Locked)"
@@ -117,6 +122,7 @@ object SystemSelfAuditEngine {
                 }
             } else {
                 healthyCount++
+                lastActivityTracker["Background Monitoring Service"] = System.currentTimeMillis()
             }
             checkResults.add(createComponentStatus("Background Monitoring Service", serviceStatus))
 
@@ -124,9 +130,11 @@ object SystemSelfAuditEngine {
             val sm = appCtx.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
             val smStatus = if (sm != null) {
                 healthyCount++
+                lastActivityTracker["Sensor Manager"] = System.currentTimeMillis()
                 "✅ Running Normally"
             } else {
                 failedCount++
+                errorTracker["Sensor Manager"] = "SensorManager service unavailable on device"
                 "🔴 Failed"
             }
             checkResults.add(createComponentStatus("Sensor Manager", smStatus))
@@ -136,6 +144,7 @@ object SystemSelfAuditEngine {
             val gyroExists = sm?.getDefaultSensor(Sensor.TYPE_GYROSCOPE) != null
             val fusionStatus = if (accelExists && gyroExists) {
                 healthyCount++
+                if (serviceActive) lastActivityTracker["Sensor Fusion Engine"] = System.currentTimeMillis()
                 "✅ Running Normally"
             } else if (accelExists || gyroExists) {
                 warningCount++
@@ -149,6 +158,7 @@ object SystemSelfAuditEngine {
             // 4. Event Detection Engine
             val eventEngineStatus = if (serviceActive) {
                 healthyCount++
+                lastActivityTracker["Event Detection Engine"] = System.currentTimeMillis()
                 "✅ Running Normally"
             } else {
                 warningCount++
@@ -156,15 +166,23 @@ object SystemSelfAuditEngine {
             }
             checkResults.add(createComponentStatus("Event Detection Engine", eventEngineStatus))
 
-            // 5. Event Logging Service
+            // 5. Event Logging Service (Verify DAO accessibility & recent events)
             var loggingStatus = "✅ Running Normally"
             try {
-                repo.logBatteryEvent("AUDIT_HEARTBEAT", "Self-Audit Heartbeat", "Logging sub-system heartbeat verified.", "DIAGNOSTIC", "SelfAuditEngine")
+                val recentEvents = db.batteryDao().getRecentBatteryEventsDirect()
                 healthyCount++
+                if (recentEvents.isNotEmpty()) {
+                    lastActivityTracker["Event Logging Service"] = recentEvents.first().timestamp
+                } else {
+                    lastActivityTracker["Event Logging Service"] = lastActivityTracker["Event Logging Service"] ?: System.currentTimeMillis()
+                }
+                errorTracker["Event Logging Service"] = null
             } catch (e: Exception) {
                 loggingStatus = "🔴 Failed"
                 failedCount++
-                errorTracker["Event Logging Service"] = e.message
+                val errDesc = "${e.javaClass.simpleName}: ${e.message ?: "Event log query failed"}"
+                errorTracker["Event Logging Service"] = errDesc
+                Log.e(TAG, "Event Logging health check failed: $errDesc", e)
             }
             checkResults.add(createComponentStatus("Event Logging Service", loggingStatus))
 
@@ -172,9 +190,11 @@ object SystemSelfAuditEngine {
             val nm = appCtx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             val nmStatus = if (nm != null) {
                 healthyCount++
+                lastActivityTracker["Notification Service"] = System.currentTimeMillis()
                 "✅ Running Normally"
             } else {
                 failedCount++
+                errorTracker["Notification Service"] = "NotificationManager service unavailable"
                 "🔴 Failed"
             }
             checkResults.add(createComponentStatus("Notification Service", nmStatus))
@@ -182,6 +202,7 @@ object SystemSelfAuditEngine {
             // 7. Voice Announcement Service
             val voiceStatus = if (serviceActive) {
                 healthyCount++
+                lastActivityTracker["Voice Announcement Service"] = lastActivityTracker["Voice Announcement Service"] ?: System.currentTimeMillis()
                 "✅ Running Normally"
             } else {
                 warningCount++
@@ -189,21 +210,37 @@ object SystemSelfAuditEngine {
             }
             checkResults.add(createComponentStatus("Voice Announcement Service", voiceStatus))
 
-            // 8. Database Service
+            // 8. Database Service: Comprehensive non-destructive health validation
             var dbStatus = "✅ Running Normally"
             try {
-                repo.getSettingsOrInit()
+                // Validate Database instance and multiple DAOs
+                val currentSettings = db.batteryDao().getSettingsDirect()
+                val historyCount = db.batteryHistoryDao().getBatteryHistoryCountDirect()
+                if (currentSettings == null) {
+                    db.batteryDao().insertSettings(com.example.data.SettingsEntity())
+                }
                 healthyCount++
+                lastActivityTracker["Database Service"] = System.currentTimeMillis()
+                errorTracker["Database Service"] = null
             } catch (e: Exception) {
                 dbStatus = "🔴 Failed"
                 failedCount++
-                errorTracker["Database Service"] = e.message
+                val errDesc = "${e.javaClass.simpleName}: ${e.message ?: "Database query failed"}"
+                errorTracker["Database Service"] = errDesc
+                Log.e(TAG, "Database Service health check failed: $errDesc", e)
             }
             checkResults.add(createComponentStatus("Database Service", dbStatus))
 
             // 9. Capability Manager
-            val capStatus = "✅ Running Normally"
-            healthyCount++
+            val capRegistry = com.example.engines.capability.CapabilityFeatureEngine.registryState.value
+            val capStatus = if (capRegistry.activeFeaturesCount > 0) {
+                healthyCount++
+                lastActivityTracker["Capability Manager"] = System.currentTimeMillis()
+                "✅ Running Normally"
+            } else {
+                warningCount++
+                "🟡 Warning"
+            }
             checkResults.add(createComponentStatus("Capability Manager", capStatus))
 
             // 10. Permission Manager
@@ -215,21 +252,25 @@ object SystemSelfAuditEngine {
                     warningCount++
                 } else {
                     healthyCount++
+                    lastActivityTracker["Permission Manager"] = System.currentTimeMillis()
                 }
             } else {
                 healthyCount++
+                lastActivityTracker["Permission Manager"] = System.currentTimeMillis()
             }
             checkResults.add(createComponentStatus("Permission Manager", permStatus))
 
             // 11. Settings Manager
             var settingsStatus = "✅ Running Normally"
             try {
-                repo.getSettingsOrInit()
+                val s = repo.getSettingsOrInit()
                 healthyCount++
+                lastActivityTracker["Settings Manager"] = System.currentTimeMillis()
+                errorTracker["Settings Manager"] = null
             } catch (e: Exception) {
                 settingsStatus = "🔴 Failed"
                 failedCount++
-                errorTracker["Settings Manager"] = e.message
+                errorTracker["Settings Manager"] = "${e.javaClass.simpleName}: ${e.message}"
             }
             checkResults.add(createComponentStatus("Settings Manager", settingsStatus))
 
@@ -248,6 +289,7 @@ object SystemSelfAuditEngine {
                 val sensor = sm?.getDefaultSensor(type)
                 val statusStr = if (sensor != null) {
                     healthyCount++
+                    if (serviceActive) lastActivityTracker[name] = System.currentTimeMillis()
                     "✅ Running Normally"
                 } else {
                     unsupportedCount++
@@ -259,6 +301,7 @@ object SystemSelfAuditEngine {
             // Battery Temperature
             val tempStatus = "✅ Running Normally"
             healthyCount++
+            lastActivityTracker["Battery Temperature"] = System.currentTimeMillis()
             checkResults.add(createComponentStatus("Battery Temperature", tempStatus))
 
             // Thermal API
@@ -266,6 +309,7 @@ object SystemSelfAuditEngine {
                 val pm = appCtx.getSystemService(Context.POWER_SERVICE) as? PowerManager
                 if (pm != null) {
                     healthyCount++
+                    lastActivityTracker["Thermal API"] = System.currentTimeMillis()
                     "✅ Running Normally"
                 } else {
                     unsupportedCount++
@@ -281,21 +325,30 @@ object SystemSelfAuditEngine {
             val bm = appCtx.getSystemService(Context.BATTERY_SERVICE)
             val bmStatus = if (bm != null) {
                 healthyCount++
+                lastActivityTracker["Battery Manager"] = System.currentTimeMillis()
                 "✅ Running Normally"
             } else {
                 failedCount++
+                errorTracker["Battery Manager"] = "BatteryManager system service unavailable"
                 "🔴 Failed"
             }
             checkResults.add(createComponentStatus("Battery Manager", bmStatus))
 
             // BroadcastReceivers
-            val receiverStatus = "✅ Running Normally"
-            healthyCount++
+            val receiverStatus = if (serviceActive) {
+                healthyCount++
+                lastActivityTracker["BroadcastReceivers"] = System.currentTimeMillis()
+                "✅ Running Normally"
+            } else {
+                warningCount++
+                "🟡 Warning"
+            }
             checkResults.add(createComponentStatus("BroadcastReceivers", receiverStatus))
 
             // Sensor Listeners
             val listenerStatus = if (serviceActive) {
                 healthyCount++
+                lastActivityTracker["Sensor Listeners"] = System.currentTimeMillis()
                 "✅ Running Normally"
             } else {
                 warningCount++
@@ -308,16 +361,24 @@ object SystemSelfAuditEngine {
             try {
                 val wm = WorkManager.getInstance(appCtx)
                 healthyCount++
+                lastActivityTracker["Scheduled Workers"] = System.currentTimeMillis()
+                errorTracker["Scheduled Workers"] = null
             } catch (e: Exception) {
                 workerStatus = "🟡 Warning"
                 warningCount++
-                errorTracker["Scheduled Workers"] = e.message
+                errorTracker["Scheduled Workers"] = "${e.javaClass.simpleName}: ${e.message}"
             }
             checkResults.add(createComponentStatus("Scheduled Workers", workerStatus))
 
             // Event Queue
-            val queueStatus = "✅ Running Normally"
-            healthyCount++
+            val queueStatus = if (serviceActive) {
+                healthyCount++
+                lastActivityTracker["Event Queue"] = System.currentTimeMillis()
+                "✅ Running Normally"
+            } else {
+                warningCount++
+                "🟡 Warning"
+            }
             checkResults.add(createComponentStatus("Event Queue", queueStatus))
 
             // Save results to Flow list
@@ -387,7 +448,12 @@ object SystemSelfAuditEngine {
     }
 
     private fun createComponentStatus(name: String, status: String): ComponentStatus {
-        val nowStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(java.util.Date())
+        val lastActiveMs = lastActivityTracker[name]
+        val lastActiveStr = if (lastActiveMs != null && lastActiveMs > 0L) {
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(java.util.Date(lastActiveMs))
+        } else {
+            "Not observed"
+        }
         val startVal = startTimeTracker[name] ?: System.currentTimeMillis()
         val startStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(java.util.Date(startVal))
 
@@ -403,7 +469,7 @@ object SystemSelfAuditEngine {
             name = name,
             status = status,
             startTime = startStr,
-            lastSuccessfulActivity = nowStr,
+            lastSuccessfulActivity = lastActiveStr,
             lastError = errorTracker[name],
             restartCount = restartTracker[name] ?: 0,
             memoryUsage = memUsage,

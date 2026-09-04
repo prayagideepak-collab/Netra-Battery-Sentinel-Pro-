@@ -847,22 +847,23 @@ fun AuthoritativeBatteryRuntimeCard(
             )
 
             // Date-Isolated Calculations: strictly using dateSamples without fake fallbacks
-            val batteryCurrent = dateSamples.lastOrNull()?.let { "${it.batteryLevel}%" } ?: (if (isToday) "$percentage%" else "Unavailable")
+            val batteryCurrent = dateSamples.lastOrNull()?.let { "${it.batteryLevel}%" } ?: "Unavailable"
             val batteryMin = dateSamples.minOfOrNull { it.batteryLevel }?.let { "$it%" } ?: "Unavailable"
             val batteryMax = dateSamples.maxOfOrNull { it.batteryLevel }?.let { "$it%" } ?: "Unavailable"
 
-            val tempCurrent = dateSamples.lastOrNull()?.let { String.format(java.util.Locale.US, "%.1f°C", it.temperature) } ?: (if (isToday && state.temperature > 0) "${String.format(java.util.Locale.US, "%.1f", state.temperature)}°C" else "Unavailable")
+            val tempCurrent = dateSamples.lastOrNull()?.let { String.format(java.util.Locale.US, "%.1f°C", it.temperature) } ?: "Unavailable"
             val tempMin = dateSamples.minOfOrNull { it.temperature }?.let { String.format(java.util.Locale.US, "%.1f°C", it) } ?: "Unavailable"
             val tempMax = dateSamples.maxOfOrNull { it.temperature }?.let { String.format(java.util.Locale.US, "%.1f°C", it) } ?: "Unavailable"
 
             val validVolts = dateSamples.filter { it.voltageMv > 0 }
-            val voltCurrent = validVolts.lastOrNull()?.let { String.format(java.util.Locale.US, "%.2fV", it.voltageMv / 1000f) } ?: (if (isToday && state.voltage > 0) "${String.format(java.util.Locale.US, "%.2f", state.voltage / 1000f)}V" else "Unavailable")
+            val voltCurrent = validVolts.lastOrNull()?.let { String.format(java.util.Locale.US, "%.2fV", it.voltageMv / 1000f) } ?: "Unavailable"
             val voltMin = validVolts.minOfOrNull { it.voltageMv }?.let { String.format(java.util.Locale.US, "%.2fV", it / 1000f) } ?: "Unavailable"
             val voltMax = validVolts.maxOfOrNull { it.voltageMv }?.let { String.format(java.util.Locale.US, "%.2fV", it / 1000f) } ?: "Unavailable"
 
-            val currCurrent = dateSamples.lastOrNull()?.let { "${it.currentNowMa}mA" } ?: (if (isToday) "${state.currentNow}mA" else "Unavailable")
-            val currMin = dateSamples.minOfOrNull { it.currentNowMa }?.let { "${it}mA" } ?: "Unavailable"
-            val currMax = dateSamples.maxOfOrNull { it.currentNowMa }?.let { "${it}mA" } ?: "Unavailable"
+            val validCurrs = dateSamples.filter { it.currentNowMa != 0 }
+            val currCurrent = dateSamples.lastOrNull()?.let { "${it.currentNowMa}mA" } ?: "Unavailable"
+            val currMin = validCurrs.minOfOrNull { it.currentNowMa }?.let { "${it}mA" } ?: "Unavailable"
+            val currMax = validCurrs.maxOfOrNull { it.currentNowMa }?.let { "${it}mA" } ?: "Unavailable"
 
             // Grid Layout
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -6450,7 +6451,7 @@ fun ChargingDisconnectDialog(
             val durationSec = session.totalDurationSeconds
             val durationMin = durationSec / 60
             val durationRemainingSec = durationSec % 60
-            val chargeTimeStr = if (durationMin > 0) "${durationMin}m ${durationRemainingSec}s" else "${durationSec}s"
+            val chargeTimeStr = com.example.util.TimeManager.formatDurationSeconds(session.totalDurationSeconds)
 
             val speedPctPerHr = if (durationSec > 0) {
                 (pctGained.toFloat() / (durationSec.toFloat() / 3600f))
@@ -6465,14 +6466,12 @@ fun ChargingDisconnectDialog(
                     val secTo80 = if (pctGained > 0) {
                         ((80 - startPercent).toFloat() / pctGained.toFloat() * durationSec).toLong()
                     } else 0L
-                    val minTo80 = secTo80 / 60
-                    val remSecTo80 = secTo80 % 60
-                    "${minTo80}m ${remSecTo80}s"
+                    com.example.util.TimeManager.formatDurationSeconds(secTo80)
                 }
                 speedPctPerHr > 0.1f -> {
                     val remPct = 80 - endPercent
                     val estMinutes = (remPct / speedPctPerHr * 60).toLong()
-                    "${estMinutes}m"
+                    com.example.util.TimeManager.formatMinutes(estMinutes.toInt())
                 }
                 else -> "N/A"
             }
@@ -6483,12 +6482,10 @@ fun ChargingDisconnectDialog(
                 "Not reached"
             }
 
-            val overchargeMin = session.overchargingDurationSeconds / 60
-            val overchargeSec = session.overchargingDurationSeconds % 60
             val overchargingTimeStr = if (session.overchargingDurationSeconds > 0) {
-                if (overchargeMin > 0) "${overchargeMin}m ${overchargeSec}s" else "${session.overchargingDurationSeconds}s"
+                com.example.util.TimeManager.formatDurationSeconds(session.overchargingDurationSeconds)
             } else {
-                "0s"
+                "00:00:00"
             }
 
             Column(

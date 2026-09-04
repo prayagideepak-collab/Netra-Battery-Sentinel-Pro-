@@ -75,11 +75,11 @@ class BatteryHealthLogWorker(appContext: Context, workerParams: WorkerParameters
             // Insert periodic battery trend log into Room database
             val trendLog = BatteryTrendLog(
                 timestamp = System.currentTimeMillis(),
-                dischargeRate = if (isCharging) 0f else 4.2f,
+                dischargeRate = 0f,
                 chargeCycleDuration = 0L,
                 batteryLevel = pct,
                 temperature = temp,
-                voltage = if (voltage > 0) voltage else 4120,
+                voltage = if (voltage > 0) voltage else 0,
                 currentNow = currentNowVal
             )
             dao.insertTrendLog(trendLog)
@@ -106,7 +106,7 @@ class BatteryHealthLogWorker(appContext: Context, workerParams: WorkerParameters
                 timestamp = System.currentTimeMillis(),
                 eventType = "WORKMANAGER_HEALTH_LOG",
                 title = "Periodic Health Capture",
-                details = "Automated WorkManager battery capture: Level=$pct%, Temp=$temp°C, Voltage=${if (voltage > 0) voltage else 4120}mV",
+                details = "Automated WorkManager battery capture: Level=$pct%, Temp=$temp°C, Voltage=${if (voltage > 0) "${voltage}mV" else "Unavailable"}",
                 category = "HEALTH",
                 source = "WorkManager"
             )

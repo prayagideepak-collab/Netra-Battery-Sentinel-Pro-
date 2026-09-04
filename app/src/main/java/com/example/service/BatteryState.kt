@@ -63,7 +63,7 @@ data class BatteryState(
     val health: String = "Good",
     val healthPercentage: Int = 98, // simulated/estimated health %
     val cycleCount: Int = 42, // API 34+ cycle count if supported
-    val speed: Float = 4.2f, // percentage points per hour (computed)
+    val speed: Float = 0f, // percentage points per hour (0f = calculating/unavailable)
     val timeTo50Min: Int = 0,
     val timeTo80Min: Int = 30,
     val timeTo100Min: Int = 60,
