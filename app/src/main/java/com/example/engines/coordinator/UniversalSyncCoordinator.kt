@@ -414,7 +414,7 @@ object UniversalSyncCoordinator : Engine {
                     val tasks = db.syncTaskDao().getAllSyncTasksDirect()
 
                     if (settings != null && version != null) {
-                        SyncTaskResult(SyncState.SUCCESS, null, 100, "Database verified (v43, schema ${version.versionCode})")
+                        SyncTaskResult(SyncState.SUCCESS, null, 100, "Database verified (v47, app version ${version.versionCode})")
                     } else {
                         SyncTaskResult(SyncState.FAILED, "Database returned empty core configuration", 0)
                     }

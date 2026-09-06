@@ -579,49 +579,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        // Continuous Authoritative Live Telemetry Sampling loop (0.3s cadence)
-        viewModelScope.launch(Dispatchers.Default) {
-            val context = getApplication<Application>()
-            val bm = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
 
-            while (isActive) {
-                try {
-                    val state = sanitizedBatteryState.value
-                    if (state.isDataAvailable && state.percentage in 0..100) {
-                        val voltMv = if (state.voltage > 0) state.voltage else 4000
-                        val rawCurr = if (state.currentNow != 0) state.currentNow else {
-                            val prop = try {
-                                bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: 0
-                            } catch (e: Exception) { 0 }
-                            var c = prop / 1000
-                            if (abs(c) > 15000) c /= 1000
-                            c
-                        }
-
-                        ingestLiveTelemetrySample(
-                            percentage = state.percentage,
-                            temperature = state.temperature,
-                            voltageMv = voltMv,
-                            currentMa = rawCurr,
-                            isCharging = state.isCharging
-                        )
-
-                        val volt = voltMv / 1000f
-                        val curr = rawCurr.toFloat()
-                        val pwr = volt * (abs(curr) / 1000f) * (if (state.isCharging) 1f else -1f)
-                        val temp = state.temperature
-
-                        _liveVoltageHistory.update { (it + volt).takeLast(30) }
-                        _liveCurrentHistory.update { (it + curr).takeLast(30) }
-                        _livePowerHistory.update { (it + pwr).takeLast(30) }
-                        _liveTemperatureHistory.update { (it + temp).takeLast(30) }
-                    }
-                } catch (e: Exception) {
-                    Log.e("BatteryViewModel", "Error in live telemetry loop", e)
-                }
-                delay(300L) // 0.3-second live update cadence
-            }
-        }
     }
 
     fun updateSettings(newSettings: SettingsEntity) {

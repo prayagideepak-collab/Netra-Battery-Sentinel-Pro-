@@ -14,7 +14,6 @@ import androidx.work.WorkManager
 import com.example.data.BatteryDatabase
 import com.example.data.BatteryRepository
 import com.example.workers.CleanupWorker
-import com.example.workers.BatteryHealthLogWorker
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -85,7 +84,6 @@ class BatteryApplication : Application() {
         SafeModeInitializer.runSafeTask("CleanupWorker") {
             ServiceInitializer.initialize("CleanupWorker") {
                 scheduleCleanupWork()
-                scheduleBatteryHealthLoggingWork()
                 scheduleDataSyncWork()
                 scheduleWidgetUpdateWork()
             }
@@ -251,24 +249,6 @@ class BatteryApplication : Application() {
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "dataSyncWork",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
-    }
-
-    private fun scheduleBatteryHealthLoggingWork() {
-        val constraints = Constraints.Builder()
-            .setRequiresDeviceIdle(true)
-            .setRequiresBatteryNotLow(true)
-            .build()
-        val workRequest = PeriodicWorkRequestBuilder<BatteryHealthLogWorker>(
-            12, TimeUnit.HOURS
-        )
-            .setConstraints(constraints)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "batteryHealthLoggingWork",
             ExistingPeriodicWorkPolicy.KEEP,
             workRequest
         )
