@@ -90,5 +90,5 @@ data class SettingsEntity(
     val highDrainAppUsageEnabled: Boolean = true,
     val lowBatteryRedThemeEnabled: Boolean = true,
     val dynamicBatteryColorEngineEnabled: Boolean = false,
-    val showSpeedIndicatorInNotification: Boolean = false,
+    val showSpeedIndicatorInNotification: Boolean = false
 )

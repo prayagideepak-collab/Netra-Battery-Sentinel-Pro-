@@ -40,8 +40,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
                     } catch (e: Exception) {
                         Log.e("BootCompletedReceiver", "Failed to run boot self-audit", e)
                     }
-
-                    } catch (e: Exception) {
+                } catch (e: Exception) {
                     Log.e("BootCompletedReceiver", "Failed to start BatteryService on boot", e)
                 }
             }

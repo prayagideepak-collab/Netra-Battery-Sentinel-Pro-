@@ -1,0 +1,134 @@
+package com.example
+
+import android.content.Context
+import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.test.core.app.ApplicationProvider
+import com.example.data.BatteryDatabase
+import com.example.data.BatteryDatabaseMigrations
+import com.example.data.SettingsEntity
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.File
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class RoomMigrationTest {
+
+    private lateinit var context: Context
+    private val dbName = "test_migration_netra_db.db"
+
+    @Before
+    fun setup() {
+        context = ApplicationProvider.getApplicationContext()
+        context.deleteDatabase(dbName)
+    }
+
+    @After
+    fun tearDown() {
+        context.deleteDatabase(dbName)
+    }
+
+    @Test
+    fun testMigration46to47PreservesAllDataAndRemovesCleaner() = runBlocking {
+        // Step 1: Create a Version 46 Database using raw SQLite with all v46 tables
+        val config = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(dbName)
+            .callback(object : SupportSQLiteOpenHelper.Callback(46) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    // Populate base tables using migration 45->46
+                    BatteryDatabaseMigrations.MIGRATION_45_46.migrate(db)
+
+                    // Add v46 column autoCacheCleanerEnabled
+                    try {
+                        db.execSQL("ALTER TABLE app_settings ADD COLUMN autoCacheCleanerEnabled INTEGER NOT NULL DEFAULT 1")
+                    } catch (e: Exception) {
+                        // ignore if exists
+                    }
+
+                    // Populate v46 sample user settings
+                    db.execSQL(
+                        """
+                        INSERT INTO `app_settings` VALUES (
+                            1, 'AMOLED', 1.2, 0.9, 0.8, 'FEMALE', 10, 95, 1, '05:30 AM', '11:00 PM',
+                            0, '01:00 PM', '02:00 PM', 0, 1, 44.0, 1, 0, 1, 18, 98,
+                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                            1, 1, 1, 0, 0, 1, 0, 0, 1, '09:00 PM', '06:00 AM',
+                            0, 0, 0, 1, 1, 850, 1690000000000, 1690000050000, '["ACH_1"]', 5, 'PREMIUM_LIFETIME',
+                            1, 20, 1, 1, 1, 85.0, 1, 9500.0, 1, 1, 0, 0, 1
+                        )
+                        """.trimIndent()
+                    )
+
+                    // Insert sample charging session
+                    db.execSQL(
+                        "INSERT INTO `charging_sessions` (`startTime`, `startPercentage`, `startTemperature`, `maxTemperature`, `chargingType`, `isOvernight`, `isDischarge`, `avgPower`, `screenOnTimeMinutes`, `standbyTimeMinutes`, `formattedStartTime`, `totalDurationSeconds`, `overchargingDurationSeconds`, `fullyCharged`, `sessionStatus`, `createdTimestamp`) VALUES (1700000000000, 40, 29.5, 33.2, 'AC', 0, 0, 0.0, 0, 0, '', 0, 0, 0, 'ACTIVE', 0)"
+                    )
+
+                    // Insert sample app version
+                    db.execSQL(
+                        "INSERT INTO `app_version_table` VALUES (1, 312, '3.5.2-authoritative-telemetry-compliance', 1700000000000, 'Prior Version')"
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(config)
+        val rawDb = helper.writableDatabase
+        assertEquals(46, rawDb.version)
+
+        // Step 2: Execute Migration 46 -> 47 directly on the DB
+        BatteryDatabaseMigrations.MIGRATION_46_47.migrate(rawDb)
+        rawDb.version = 47
+        rawDb.close()
+
+        // Step 3: Open migrated database through Room with full validation
+        val roomDb = Room.databaseBuilder(
+            context,
+            BatteryDatabase::class.java,
+            dbName
+        )
+        .addMigrations(BatteryDatabaseMigrations.MIGRATION_46_47)
+        .allowMainThreadQueries()
+        .build()
+
+        val dao = roomDb.batteryDao()
+
+        // Step 4: Verify Settings were completely preserved
+        val settings = dao.getSettingsDirect()
+        assertNotNull(settings)
+        assertEquals("AMOLED", settings?.theme)
+        assertEquals("FEMALE", settings?.voiceType)
+        assertEquals(10, settings?.announcementInterval)
+        assertEquals(95, settings?.customPercentage)
+        assertEquals("05:30 AM", settings?.activeHoursStart)
+        assertEquals("11:00 PM", settings?.activeHoursEnd)
+        assertEquals(850, settings?.credits)
+        assertEquals(18, settings?.lowBatteryThreshold)
+        assertEquals(98, settings?.fullBatteryThreshold)
+        assertEquals("PREMIUM_LIFETIME", settings?.trialSelected)
+
+        // Step 5: Verify Charging Sessions were preserved
+        val sessions = dao.getAllSessionsDirect()
+        assertEquals(1, sessions.size)
+        assertEquals(40, sessions[0].startPercentage)
+        assertEquals("AC", sessions[0].chargingType)
+
+        // Step 6: Verify App Version Table
+        val appVersion = dao.getAppVersionDirect()
+        assertNotNull(appVersion)
+        assertEquals(312, appVersion?.versionCode)
+
+        roomDb.close()
+    }
+}

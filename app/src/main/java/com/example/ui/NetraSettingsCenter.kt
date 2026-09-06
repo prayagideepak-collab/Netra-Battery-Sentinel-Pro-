@@ -1481,7 +1481,6 @@ fun AdvancedSystemCategoryView(
             )
         }
 
-
         DeveloperCenterCard()
         ValidationEngineCard()
         ReleaseFrameworkCard()

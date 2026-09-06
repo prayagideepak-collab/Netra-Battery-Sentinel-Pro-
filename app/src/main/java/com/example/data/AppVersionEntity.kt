@@ -7,8 +7,8 @@ import androidx.room.PrimaryKey
 data class AppVersionEntity(
     @PrimaryKey
     val id: Int = 1,
-    val versionCode: Int = 312,
-    val versionName: String = "3.5.2-authoritative-telemetry-compliance",
+    val versionCode: Int = 313,
+    val versionName: String = "3.5.3-cleaner-removal-migration-compliance",
     val lastUpdatedTimestamp: Long = System.currentTimeMillis(),
-    val changeDescription: String = "Defect Fix: Final Compliance Audit, Battery History Unification, 100% TTS Safety, Accurate Timestamps & No-Destructive-Migration"
+    val changeDescription: String = "Compliance: Complete Auto Cache Cleaner subsystem removal, precise transactional Room Migration 46->47 preserving user data without destructive fallback"
 )

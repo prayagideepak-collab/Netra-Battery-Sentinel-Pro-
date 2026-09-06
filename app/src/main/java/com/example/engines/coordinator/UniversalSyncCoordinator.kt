@@ -444,7 +444,6 @@ object UniversalSyncCoordinator : Engine {
                 }
             }
         ))
-
     }
 
     fun registerSyncTask(
