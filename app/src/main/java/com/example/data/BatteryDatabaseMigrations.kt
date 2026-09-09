@@ -187,6 +187,27 @@ object BatteryDatabaseMigrations {
         database.execSQL(
             "CREATE TABLE IF NOT EXISTS `charging_protection_sessions` (`sessionId` TEXT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER, `startBatteryLevel` INTEGER NOT NULL, `endBatteryLevel` INTEGER, `startTemperature` REAL NOT NULL, `maxTemperature` REAL NOT NULL, `originalScreenTimeout` INTEGER NOT NULL, `originalBrightnessMode` INTEGER NOT NULL, `originalBrightnessValue` INTEGER NOT NULL, `originalAutoBrightness` INTEGER NOT NULL, `originalNetraBackgroundState` TEXT NOT NULL, `originalNetraSyncState` INTEGER NOT NULL, `actionsApplied` TEXT NOT NULL, `restorationStatus` TEXT NOT NULL, `timeoutModified` INTEGER NOT NULL, `brightnessModified` INTEGER NOT NULL, `brightnessModeModified` INTEGER NOT NULL, `syncModified` INTEGER NOT NULL, `backgroundWorkloadModified` INTEGER NOT NULL, PRIMARY KEY(`sessionId`))"
         )
+
+        val chargingSessionCols = listOf(
+            "startTemperature REAL NOT NULL DEFAULT 0.0",
+            "endTemperature REAL",
+            "fullChargeTime INTEGER",
+            "formattedStartTime TEXT NOT NULL DEFAULT ''",
+            "formattedFullChargeTime TEXT",
+            "formattedEndTime TEXT",
+            "totalDurationSeconds INTEGER NOT NULL DEFAULT 0",
+            "overchargingDurationSeconds INTEGER NOT NULL DEFAULT 0",
+            "fullyCharged INTEGER NOT NULL DEFAULT 0",
+            "sessionStatus TEXT NOT NULL DEFAULT 'ACTIVE'",
+            "createdTimestamp INTEGER NOT NULL DEFAULT 0"
+        )
+        for (col in chargingSessionCols) {
+            try {
+                database.execSQL("ALTER TABLE charging_sessions ADD COLUMN $col")
+            } catch (e: Exception) {
+                // Column already exists, safe to ignore
+            }
+        }
     }
 
     val MIGRATION_1_37 = object : Migration(1, 37) {
@@ -434,6 +455,12 @@ object BatteryDatabaseMigrations {
             } finally {
                 database.endTransaction()
             }
+        }
+    }
+
+    val MIGRATION_47_48 = object : Migration(47, 48) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            executeFullUpgrade(database)
         }
     }
 }
