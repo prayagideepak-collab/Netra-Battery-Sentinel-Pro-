@@ -74,9 +74,7 @@ fun SmartDevicesHub(
         }
     }
 
-    LaunchedEffect(btBatteryStates) {
-        com.example.service.BluetoothBatteryAnnouncementEngine.processDevices(context, btBatteryStates)
-    }
+
 
     // --- ViewModel & Canonical Registry Streams ---
     val btDevices by viewModel.connectedBluetoothDevices.collectAsStateWithLifecycle()

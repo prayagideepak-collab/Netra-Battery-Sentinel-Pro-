@@ -17,7 +17,6 @@ import java.net.InetAddress
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -92,11 +91,6 @@ object NetworkTelemetryEngine {
     val telemetry: StateFlow<NetworkTelemetry> = _telemetry.asStateFlow()
 
     // Stateful state-tracking to ensure we only log on true transitions
-    private var lastTransportType = "NONE"
-    private var lastIsInternetAvailable = false
-    private var lastWifiRangeCritical = false
-    private var lastSim1RangeCritical = false
-    private var lastSim2RangeCritical = false
     private var lastAirplaneMode = false
     private var lastHeavyUsage = false
     
@@ -104,14 +98,6 @@ object NetworkTelemetryEngine {
     private var lastWifiQuality: ConnectionQuality = ConnectionQuality.UNAVAILABLE
     private var lastInternetQuality: ConnectionQuality = ConnectionQuality.UNAVAILABLE
     
-    // Speed tracking state
-    private var lastLoggedSpeed = 0.0
-    private var lastLoggedStability = "STABLE"
-    private val speedSamples = mutableListOf<Double>()
-    private val latencySamples = mutableListOf<Int>()
-    private var liveUpdateThread: Thread? = null
-    private var isForegroundActive = false
-
     // Historical limits for active graph
     private const val MAX_GRAPH_HISTORY = 15
 
@@ -121,41 +107,11 @@ object NetworkTelemetryEngine {
     private var lastSim1Dbm = -127
     private var lastSim2Dbm = -127
 
-    // Start high-frequency visual updates when in foreground, stop when backgrounded
-    fun setForegroundActive(active: Boolean, context: Context) {
-        isForegroundActive = active
-        Log.i(TAG, "NETRA Foreground state changed to: $active")
-        if (active) {
-            startLivePolling(context.applicationContext)
-        } else {
-            stopLivePolling()
-        }
-    }
-
-    private fun startLivePolling(context: Context) = synchronized(this) {
-        if (liveUpdateThread != null && liveUpdateThread?.isAlive == true) return
-
-        liveUpdateThread = thread(start = true, name = "NetraLivePolling") {
-            try {
-                while (isForegroundActive) {
-                    updateTelemetry(context)
-                    // High-frequency visual update: 1 second interval
-                    Thread.sleep(1000)
-                }
-            } catch (e: InterruptedException) {
-                // Stopped normally
-            } catch (e: Exception) {
-                Log.e(TAG, "Netra live polling loop error", e)
-            }
-        }
-    }
-
-    private fun stopLivePolling() = synchronized(this) {
-        liveUpdateThread?.interrupt()
-        liveUpdateThread = null
-    }
-
     // Toggle degradation for testing purposes
+    fun setForegroundActive(active: Boolean, context: Context) {
+        // No-op: Event-driven architecture replaces continuous live polling
+    }
+
     fun toggleTestDegradation() {
         val current = _telemetry.value.testDegradationActive
         _telemetry.value = _telemetry.value.copy(testDegradationActive = !current)
@@ -183,7 +139,6 @@ object NetworkTelemetryEngine {
             // 2. Wi-Fi Metrics (Network Monitoring Layer for Live Graphs/UI)
             val wifiRssi = if (isAirplaneModeActive) -127 else safeNet.rssi
             val wifiSignal = if (isAirplaneModeActive || !safeNet.isWifiConnected) 0 else {
-                // RSSI map from -100 (0%) to -30 (100%)
                 ((wifiRssi - (-100)) * 100 / (-30 - (-100))).coerceIn(0, 100)
             }
             val wifiCritical = safeNet.isWifiConnected && wifiSignal <= 10
@@ -261,7 +216,6 @@ object NetworkTelemetryEngine {
                         sim2Info = SimTelemetry(simId = 2, state = "UNAVAILABLE")
                     }
                 } else {
-                    // Fall back to SafeTelephonyProvider details if subscription API is locked/restricted
                     if (safeTel.simState == "READY") {
                         val dbm = getSimSignalDbm(wifiSignal, 1)
                         val qual = ((dbm - (-120)) * 100 / (-50 - (-120))).coerceIn(0, 100)
@@ -280,16 +234,15 @@ object NetworkTelemetryEngine {
                     sim2Info = SimTelemetry(simId = 2, state = "UNAVAILABLE")
                 }
             } else {
-                // Permission restricted
                 if (safeTel.simState == "READY") {
-                    val dbm = -85
+                    val dbm = -90
                     sim1Info = SimTelemetry(
                         simId = 1,
                         state = "READY",
                         carrierName = safeTel.networkOperatorName,
                         networkType = safeTel.networkType,
                         signalDbm = dbm,
-                        signalPercent = 50,
+                        signalPercent = 40,
                         rangeCritical = false
                     )
                 } else {
@@ -298,7 +251,7 @@ object NetworkTelemetryEngine {
                 sim2Info = SimTelemetry(simId = 2, state = "UNAVAILABLE")
             }
 
-            // 4. Transport Type selection (Active Network Layer)
+            // 4. Transport Type selection
             val transport = when {
                 isAirplaneModeActive -> "NONE"
                 safeNet.isWifiConnected -> "WIFI"
@@ -306,52 +259,20 @@ object NetworkTelemetryEngine {
                 else -> "NONE"
             }
 
-            // Dispatch Authoritative Active Transport Transitions
             AuthoritativeNetworkLogger.onActiveTransportChanged(appContext, transport)
 
-            // 5. Internet Connectivity metrics (Active transport only)
             val isInternetValid = !isAirplaneModeActive && safeNet.isInternetAvailable
-            
-            // Dispatch Authoritative Internet Access Transitions
             AuthoritativeNetworkLogger.onInternetAccessStateChanged(appContext, isInternetValid, transport)
 
-            // Generate Speed depending on transport and test degradation flags
-            var baseSpeed = when (transport) {
-                "WIFI" -> 320.0
-                "CELLULAR" -> 85.0
+            // Deterministic metrics without synthetic random noise
+            val liveSpeed = when (transport) {
+                "WIFI" -> if (isInternetValid) 150.0 else 0.0
+                "CELLULAR" -> if (isInternetValid) 45.0 else 0.0
                 else -> 0.0
             }
+            val liveUpload = if (liveSpeed > 0) liveSpeed * 0.3 else 0.0
 
-            // Apply degradation if custom simulation is active
-            if (_telemetry.value.testDegradationActive) {
-                baseSpeed = 2.4 // Sustained Degradation Test value
-            }
-
-            // Add slight realistic fluctuation
-            var liveSpeed = if (baseSpeed > 0.0) {
-                val fluctuation = (Math.random() * 20.0) - 10.0
-                max(1.0, baseSpeed + fluctuation)
-            } else 0.0
-
-            // Occasional transient single-sample drop (e.g. 5% chance)
-            val isTransientDrop = isForegroundActive && Math.random() < 0.05 && !_telemetry.value.testDegradationActive
-            if (isTransientDrop && transport != "NONE") {
-                liveSpeed = 0.8 // Momentary transient drop
-                Log.d(TAG, "Transient speed drop triggered: $liveSpeed Mbps")
-            }
-
-            val liveUpload = if (liveSpeed > 0) liveSpeed * 0.25 else 0.0
-
-            // Collect samples for runtime monitoring (no spam logs)
-            if (transport != "NONE") {
-                speedSamples.add(liveSpeed)
-                if (speedSamples.size > 3) speedSamples.removeAt(0)
-            } else {
-                speedSamples.clear()
-            }
-
-            // High Data Intensity Detection (Authoritative Event Trigger)
-            val highSpeedActive = liveSpeed > 25.0
+            val highSpeedActive = liveSpeed > 50.0
             if (highSpeedActive != lastHeavyUsage) {
                 lastHeavyUsage = highSpeedActive
                 if (highSpeedActive) {
@@ -366,23 +287,17 @@ object NetworkTelemetryEngine {
                 }
             }
 
-            // 6. Battery-Impact Link Correlation
             val isWeakSignal = (transport == "WIFI" && wifiSignal <= 15) || (transport == "CELLULAR" && sim1Info.signalPercent <= 15)
             val isHighActivity = highSpeedActive || _telemetry.value.testDegradationActive
             val batteryImpact = isWeakSignal && isHighActivity
-
             val batteryImpactMsg = if (batteryImpact) {
-                "Critical Battery-Impact Pattern identified! Weak signal coupled with heavy data transfer is causing aggressive power amplifier output. Suggested: Enable Standby Battery Saver or switch to stable local access."
+                "Critical Battery-Impact Pattern identified! Weak signal coupled with heavy data transfer."
             } else ""
 
-            // Live Latency (Ping)
             val currentPing = if (isInternetValid) {
-                val jitter = (Math.random() * 12).toInt() - 6
-                val basePing = if (transport == "WIFI") 22 else 65
-                max(5, basePing + jitter)
+                if (transport == "WIFI") 25 else 70
             } else -1
 
-            // Dynamic Stability evaluation (Runtime visual state only)
             val stability = when {
                 !isInternetValid -> "UNAVAILABLE"
                 _telemetry.value.testDegradationActive -> "DEGRADED"
@@ -390,14 +305,12 @@ object NetworkTelemetryEngine {
                 else -> "STABLE"
             }
 
-            // Compute real-time Connection Quality (Runtime visual state only)
             val currentWifiQuality = ConnectionQualityEngine.getWifiQuality(safeNet.isWifiConnected, wifiSignal)
             val currentInternetQuality = ConnectionQualityEngine.getInternetQuality(transport != "NONE", isInternetValid, liveSpeed, currentPing)
 
             lastWifiQuality = currentWifiQuality
             lastInternetQuality = currentInternetQuality
 
-            // Historical updates (only if active transport is connected, so we display only active transport values)
             val currentSpeedHistory = _telemetry.value.activeSpeedHistory.toMutableList()
             val currentLatencyHistory = _telemetry.value.activeLatencyHistory.toMutableList()
 
@@ -411,13 +324,12 @@ object NetworkTelemetryEngine {
                 currentLatencyHistory.clear()
             }
 
-            // Summary text
             val summary = if (isAirplaneModeActive) {
                 "Airplane Mode suspension active."
             } else if (transport == "WIFI") {
-                "Wi-Fi connected to ${safeNet.ssid} (${wifiSignal}% Quality, ${String.format(Locale.US, "%.1f", liveSpeed)} Mbps)"
+                "Wi-Fi connected to ${safeNet.ssid} (${wifiSignal}% Quality)"
             } else if (transport == "CELLULAR") {
-                "${sim1Info.carrierName} Cellular active (${sim1Info.signalPercent}% Quality, ${String.format(Locale.US, "%.1f", liveSpeed)} Mbps)"
+                "${sim1Info.carrierName} Cellular active (${sim1Info.signalPercent}% Quality)"
             } else {
                 "Outbound gateways offline."
             }
@@ -463,18 +375,16 @@ object NetworkTelemetryEngine {
     }
 
     private fun getSimSignalDbm(wifiSignal: Int, simId: Int): Int {
-        // Generate a clean, realistic signal level between -115 dBm and -65 dBm
-        // Introduce normal variance so that SIM 1 and SIM 2 can be viewed independently
-        val randomVariance = (Math.random() * 10).toInt() - 5
-        val simOffset = if (simId == 1) -80 else -92
-        return (simOffset + randomVariance).coerceIn(-120, -50)
+        val simOffset = if (simId == 1) -82 else -90
+        return simOffset.coerceIn(-120, -50)
     }
 
     fun measurePing(targetHost: String = "8.8.8.8") {
         if (_telemetry.value.isPingMeasuring) return
         _telemetry.value = _telemetry.value.copy(isPingMeasuring = true)
 
-        thread {
+        // Single on-demand ping execution without background polling loops
+        kotlin.concurrent.thread {
             try {
                 val start = System.currentTimeMillis()
                 val address = InetAddress.getByName(targetHost)

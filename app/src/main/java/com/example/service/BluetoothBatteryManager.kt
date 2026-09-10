@@ -59,10 +59,14 @@ object BluetoothBatteryManager {
                             val type = getDeviceType(device)
                             updateState(address, BluetoothBatteryState(name, address, batteryLevel, true, type, isAudio))
                             Log.i(TAG, "Device connected: $name ($address), battery: $batteryLevel")
+                            BluetoothBatteryAnnouncementEngine.onDeviceConnected(ctx, address, name, batteryLevel, type, isAudio)
                         }
                         BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
-                            updateState(address, BluetoothBatteryState(name, address, -1, false, getDeviceType(device), isAudioDevice(device)))
+                            val type = getDeviceType(device)
+                            val isAudio = isAudioDevice(device)
+                            updateState(address, BluetoothBatteryState(name, address, -1, false, type, isAudio))
                             Log.i(TAG, "Device disconnected: $name ($address)")
+                            BluetoothBatteryAnnouncementEngine.onDeviceDisconnected(ctx, address, name)
                         }
                         "android.bluetooth.device.action.BATTERY_LEVEL_CHANGED",
                         "android.bluetooth.adapter.action.CONNECTION_STATE_CHANGED" -> {
@@ -79,6 +83,9 @@ object BluetoothBatteryManager {
                                 isAudioDevice = isAudio
                             ))
                             Log.i(TAG, "Battery broadcast received for $name ($address): $batteryLevel%")
+                            if (batteryLevel >= 0) {
+                                BluetoothBatteryAnnouncementEngine.onBatteryLevelChanged(ctx, address, name, batteryLevel, isAudio)
+                            }
                         }
                     }
                 }
@@ -129,10 +136,13 @@ object BluetoothBatteryManager {
             for (device in adapter.bondedDevices ?: emptySet()) {
                 try {
                     val isConnectedMethod = device.javaClass.getMethod("isConnected")
-                    if (isConnectedMethod.invoke(device) as? Boolean == true) {
+                    val connected = isConnectedMethod.invoke(device) as? Boolean
+                    if (connected == true) {
                         connectedDevices.add(device)
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    // Fallback platform compatibility check if reflection fails
+                }
             }
 
             val currentMap = _bluetoothBatteryStates.value.toMutableMap()

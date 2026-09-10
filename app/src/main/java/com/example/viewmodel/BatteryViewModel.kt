@@ -497,8 +497,7 @@ class BatteryViewModel(application: Application) : AndroidViewModel(application)
         }
         _connectedBluetoothDevices.value = mappedList
 
-        // Trigger intelligent Bluetooth battery announcements (Connection & Thresholds)
-        com.example.service.BluetoothBatteryAnnouncementEngine.processDevices(context, mappedList)
+
 
             val thresholds = listOf(25, 50, 75, 85, 90, 95)
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
