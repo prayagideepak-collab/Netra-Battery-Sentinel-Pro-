@@ -472,8 +472,9 @@ fun NetraUnifiedGraphCanvas(
                     val height = size.height
                     if (width <= 0 || height <= 0) return@Canvas
 
-                    val leftPad = 38.dp.toPx()
-                    val rightPad = 14.dp.toPx()
+                    val isBatteryLevel = metricType == NetraMetricType.BATTERY_LEVEL
+                    val leftPad = if (isBatteryLevel) 16.dp.toPx() else 38.dp.toPx()
+                    val rightPad = if (isBatteryLevel) 44.dp.toPx() else 14.dp.toPx()
                     val topPad = 18.dp.toPx()
                     val bottomPad = 26.dp.toPx()
 
@@ -527,14 +528,17 @@ fun NetraUnifiedGraphCanvas(
                             NetraMetricType.TEMPERATURE -> "${yVal.roundToInt()}°"
                         }
 
+                        val labelX = if (isBatteryLevel) width - rightPad + 6.dp.toPx() else leftPad - 4.dp.toPx()
+                        val textAlign = if (isBatteryLevel) android.graphics.Paint.Align.LEFT else android.graphics.Paint.Align.RIGHT
+
                         drawContext.canvas.nativeCanvas.drawText(
                             labelStr,
-                            leftPad - 4.dp.toPx(),
+                            labelX,
                             y + 3.dp.toPx(),
                             android.graphics.Paint().apply {
                                 color = android.graphics.Color.GRAY
                                 textSize = 9.sp.toPx()
-                                textAlign = android.graphics.Paint.Align.RIGHT
+                                this.textAlign = textAlign
                                 isAntiAlias = true
                             }
                         )
