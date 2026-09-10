@@ -210,6 +210,36 @@ object BatteryDatabaseMigrations {
         }
     }
 
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `charging_sessions` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `startTime` INTEGER NOT NULL, `endTime` INTEGER, `startPercentage` INTEGER NOT NULL, `endPercentage` INTEGER, `chargingType` TEXT NOT NULL, `maxTemperature` REAL NOT NULL, `isOvernight` INTEGER NOT NULL, `isDischarge` INTEGER NOT NULL, `avgPower` REAL NOT NULL, `screenOnTimeMinutes` INTEGER NOT NULL, `standbyTimeMinutes` INTEGER NOT NULL, `startTemperature` REAL NOT NULL DEFAULT 0.0, `endTemperature` REAL, `fullChargeTime` INTEGER, `formattedStartTime` TEXT NOT NULL DEFAULT '', `formattedFullChargeTime` TEXT, `formattedEndTime` TEXT, `totalDurationSeconds` INTEGER NOT NULL DEFAULT 0, `overchargingDurationSeconds` INTEGER NOT NULL DEFAULT 0, `fullyCharged` INTEGER NOT NULL DEFAULT 0, `sessionStatus` TEXT NOT NULL DEFAULT 'ACTIVE', `createdTimestamp` INTEGER NOT NULL DEFAULT 0)"
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_charging_sessions_startTime` ON `charging_sessions` (`startTime`)")
+            
+            val cols = listOf(
+                "startTemperature REAL NOT NULL DEFAULT 0.0",
+                "endTemperature REAL",
+                "fullChargeTime INTEGER",
+                "formattedStartTime TEXT NOT NULL DEFAULT ''",
+                "formattedFullChargeTime TEXT",
+                "formattedEndTime TEXT",
+                "totalDurationSeconds INTEGER NOT NULL DEFAULT 0",
+                "overchargingDurationSeconds INTEGER NOT NULL DEFAULT 0",
+                "fullyCharged INTEGER NOT NULL DEFAULT 0",
+                "sessionStatus TEXT NOT NULL DEFAULT 'ACTIVE'",
+                "createdTimestamp INTEGER NOT NULL DEFAULT 0"
+            )
+            for (col in cols) {
+                try {
+                    database.execSQL("ALTER TABLE charging_sessions ADD COLUMN $col")
+                } catch (e: Exception) {
+                    // Ignored if column exists
+                }
+            }
+        }
+    }
+
     val MIGRATION_1_37 = object : Migration(1, 37) {
         override fun migrate(database: SupportSQLiteDatabase) {
             executeFullUpgrade(database)

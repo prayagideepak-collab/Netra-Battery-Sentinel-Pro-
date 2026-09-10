@@ -76,6 +76,10 @@ class BatteryApplication : Application() {
         SafeModeInitializer.runSafeTask("CapabilityFeatureEngine") {
             com.example.engines.capability.CapabilityFeatureEngine.evaluateAllCapabilities(this)
         }
+
+        SafeModeInitializer.runSafeTask("BatteryTelemetryDiagnostics") {
+            com.example.util.BatteryTelemetryDiagnosticsTest.runDiagnostics(this)
+        }
         
         SafeModeInitializer.runSafeTask("GlobalErrorHandler") {
             GlobalErrorHandler.init()
