@@ -63,12 +63,19 @@ fun SmartDevicesHub(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // --- Register USB Hardware Monitor ---
+    // --- Register BluetoothBatteryManager & USB Hardware Monitor ---
+    val btBatteryStates by com.example.service.BluetoothBatteryManager.bluetoothBatteryStates.collectAsStateWithLifecycle()
     DisposableEffect(context) {
+        com.example.service.BluetoothBatteryManager.register(context)
         UsbDeviceMonitor.register(context)
         onDispose {
+            com.example.service.BluetoothBatteryManager.unregister(context)
             UsbDeviceMonitor.unregister(context)
         }
+    }
+
+    LaunchedEffect(btBatteryStates) {
+        com.example.service.BluetoothBatteryAnnouncementEngine.processDevices(context, btBatteryStates)
     }
 
     // --- ViewModel & Canonical Registry Streams ---
@@ -818,12 +825,13 @@ fun CanonicalBluetoothCard(
                     )
                 }
 
-                // Battery Status (Truthful N/A if unavailable)
+                // Battery Status (Truthful Unavailable if unavailable)
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val batText = if (record.batteryLevel >= 0) "🔋 ${record.batteryLevel}%" else "🔋 Unavailable"
                     Text(
-                        text = if (record.batteryLevel >= 0) "🔋 ${record.batteryLevel}%" else "🔋 N/A",
+                        text = batText,
                         fontSize = 12.sp,
-                        color = if (record.batteryLevel >= 0) Color.White else Color.Gray,
+                        color = if (record.batteryLevel >= 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Bold
                     )
                 }
