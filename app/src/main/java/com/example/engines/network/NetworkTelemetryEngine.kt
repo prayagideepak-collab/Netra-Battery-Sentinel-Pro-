@@ -222,10 +222,12 @@ object NetworkTelemetryEngine {
                             sim1Fluctuations++
                         }
                         lastSim1Dbm = dbm
+                        val carrier = sub1.carrierName?.toString() ?: "SIM 1"
+                        AuthoritativeNetworkLogger.onMobileNetworkSignalChanged(appContext, qual, carrier, safeTel.networkType)
                         sim1Info = SimTelemetry(
                             simId = 1,
                             state = "READY",
-                            carrierName = sub1.carrierName?.toString() ?: "SIM 1",
+                            carrierName = carrier,
                             networkType = safeTel.networkType,
                             signalDbm = dbm,
                             signalPercent = qual,

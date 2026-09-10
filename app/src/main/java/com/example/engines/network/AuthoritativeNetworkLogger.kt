@@ -429,6 +429,63 @@ object AuthoritativeNetworkLogger {
         }
     }
 
+    @Volatile private var lastSim1SignalPercent: Int? = null
+
+    @Synchronized
+    fun onMobileNetworkSignalChanged(
+        context: Context,
+        signalPercent: Int,
+        carrierName: String,
+        networkType: String,
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        if (signalPercent < 0 || signalPercent > 100) return
+        val prev = lastSim1SignalPercent
+        if (prev != null && abs(signalPercent - prev) < 5) {
+            return // Minimum 5% meaningful change rule
+        }
+        lastSim1SignalPercent = signalPercent
+        if (prev == null) return // Cold start baseline
+
+        val locationContext = fetchOptionalCachedLocation(context)
+        val locationStr = if (locationContext != null) {
+            "Location: Lat ${String.format(Locale.US, "%.4f", locationContext.first)}, Lon ${String.format(Locale.US, "%.4f", locationContext.second)}"
+        } else {
+            "Location: Unavailable (Mobile Network Context)"
+        }
+
+        val details = """
+            Event: MOBILE_NETWORK_SIGNAL_CHANGED
+            Carrier: $carrierName
+            Network Type: $networkType
+            Signal Quality: $signalPercent%
+            $locationStr
+            Timestamp: ${formatTimestamp(timestamp)}
+        """.trimIndent()
+
+        logEvent(context, "MOBILE_NETWORK_SIGNAL_CHANGED", "Mobile Network Signal: $signalPercent% ($carrierName)", details, "NETWORK", "MobileNetworkMonitor")
+    }
+
+    private fun fetchOptionalCachedLocation(context: Context): Pair<Double, Double>? {
+        return try {
+            val hasFine = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasCoarse = context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!hasFine && !hasCoarse) return null
+
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager ?: return null
+            val lastGps = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+            val lastNet = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+            val best = lastGps ?: lastNet
+            if (best != null) {
+                Pair(best.latitude, best.longitude)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun formatTimestamp(timestamp: Long): String {
         return SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US).format(Date(timestamp))
     }
